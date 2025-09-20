@@ -216,7 +216,7 @@ export default function HomePresenter({ onAddToCart }: HomePresenterProps) {
         </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h3 className="text-3xl sm:text-4xl font-bold text-center mb-8 text-blue-800">Product Features</h3>
-          <div className="flex flex-nowrap overflow-x-auto gap-6 max-w-5xl mx-auto pb-4 px-2 pr-8 snap-x snap-mandatory -mx-2">
+          <div className="flex flex-nowrap overflow-x-auto gap-6 max-w-5xl mx-auto pb-4 px-2 pr-8 snap-x snap-mandatory -mx-2 scrollbar-blue">
             <div className="flex-none w-[280px] snap-start">
               <div className="mb-4">
                 <ImageCarousel 
@@ -230,7 +230,7 @@ export default function HomePresenter({ onAddToCart }: HomePresenterProps) {
               <p className="text-sm text-blue-700">Official Google integration</p>
             </div>
 
-            <div className="flex-none w-[280px] snap-center">
+            <div className="flex-none w-[280px] snap-start">
               <div className="mb-4">
                 <ImageCarousel 
                   images={[
@@ -243,7 +243,7 @@ export default function HomePresenter({ onAddToCart }: HomePresenterProps) {
               <p className="text-sm text-blue-700">12 months battery life</p>
             </div>
 
-            <div className="flex-none w-[280px] snap-center">
+            <div className="flex-none w-[280px] snap-start">
               <div className="mb-4">
                 <ImageCarousel 
                   images={[
@@ -256,7 +256,7 @@ export default function HomePresenter({ onAddToCart }: HomePresenterProps) {
               <p className="text-sm text-blue-700">IP68 water resistant</p>
             </div>
 
-            <div className="flex-none w-[280px] snap-center">
+            <div className="flex-none w-[280px] snap-start">
               <div className="mb-4">
                 <ImageCarousel 
                   images={[
