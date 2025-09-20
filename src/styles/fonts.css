@@ -1,0 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;500;600;700&display=swap');
+
+.font-urdu {
+  font-family: 'Noto Nastaliq Urdu', serif;
+  font-feature-settings: "kern" 1;
+  font-size: 1.2em;
+  line-height: 2;
+}
