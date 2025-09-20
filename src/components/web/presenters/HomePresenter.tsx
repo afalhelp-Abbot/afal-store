@@ -113,7 +113,7 @@ export default function HomePresenter({ onAddToCart }: HomePresenterProps) {
               <div className="relative w-full max-w-2xl mx-auto bg-blend-screen">
                 <div className="absolute inset-0 bg-gradient-to-t from-blue-600/10 to-transparent" />
                 <Image
-                  src="/Images/2c6e7458128b076e82bd99f52ab130c8.avif"
+                  src="/images/2c6e7458128b076e82bd99f52ab130c8.avif"
                   alt="Android Tag Product"
                   width={800}
                   height={600}
@@ -221,8 +221,8 @@ export default function HomePresenter({ onAddToCart }: HomePresenterProps) {
               <div className="mb-4">
                 <ImageCarousel 
                   images={[
-                    { src: '/Images/2c6e7458128b076e82bd99f52ab130c8.avif', alt: 'Find My Device Front' },
-                    { src: '/Images/94caacfb5a2c869439a89646703d75bb.avif', alt: 'Find My Device App' },
+                    { src: '/images/2c6e7458128b076e82bd99f52ab130c8.avif', alt: 'Find My Device Front' },
+                    { src: '/images/94caacfb5a2c869439a89646703d75bb.avif', alt: 'Find My Device App' },
                   ]}
                 />
               </div>
@@ -234,8 +234,8 @@ export default function HomePresenter({ onAddToCart }: HomePresenterProps) {
               <div className="mb-4">
                 <ImageCarousel 
                   images={[
-                    { src: '/Images/3c03271147d6f8062d3cdbea740aee99.avif', alt: 'Battery Life Front' },
-                    { src: '/Images/8f2cf7b23a638f499313f6fbf6bd4087.avif', alt: 'Battery Life Detail' },
+                    { src: '/images/3c03271147d6f8062d3cdbea740aee99.avif', alt: 'Battery Life Front' },
+                    { src: '/images/8f2cf7b23a638f499313f6fbf6bd4087.avif', alt: 'Battery Life Detail' },
                   ]}
                 />
               </div>
@@ -247,8 +247,8 @@ export default function HomePresenter({ onAddToCart }: HomePresenterProps) {
               <div className="mb-4">
                 <ImageCarousel 
                   images={[
-                    { src: '/Images/8227e60d14e5f9f681bd580a6671b3c5.avif', alt: 'Waterproof Front' },
-                    { src: '/Images/cad05795ed848d2c89cb4b7b53970f4c.avif', alt: 'Waterproof Detail' },
+                    { src: '/images/8227e60d14e5f9f681bd580a6671b3c5.avif', alt: 'Waterproof Front' },
+                    { src: '/images/cad05795ed848d2c89cb4b7b53970f4c.avif', alt: 'Waterproof Detail' },
                   ]}
                 />
               </div>
@@ -260,8 +260,8 @@ export default function HomePresenter({ onAddToCart }: HomePresenterProps) {
               <div className="mb-4">
                 <ImageCarousel 
                   images={[
-                    { src: '/Images/d3d9555482ccfc3130698b9400c07518.avif', alt: 'Compact Front' },
-                    { src: '/Images/ab848a78a9c626e6cb937806b8c8fbfd.avif', alt: 'Compact Detail' },
+                    { src: '/images/d3d9555482ccfc3130698b9400c07518.avif', alt: 'Compact Front' },
+                    { src: '/images/ab848a78a9c626e6cb937806b8c8fbfd.avif', alt: 'Compact Detail' },
                   ]}
                 />
               </div>
