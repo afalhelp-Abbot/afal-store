@@ -5,9 +5,10 @@ import Image from 'next/image';
 import ImageCarousel from './ImageCarousel';
 
 type HomePresenterProps = {
-  onAddToCart: () => void;
+  onAddToCart?: () => void;
   startingPrice?: number | null;
   colorPrices?: Record<string, number>;
+  colorAvailability?: Record<string, number>;
 };
 
 type ColorOption = {
@@ -16,7 +17,7 @@ type ColorOption = {
   tailwindClass: string;
 };
 
-export default function HomePresenter({ onAddToCart, startingPrice, colorPrices }: HomePresenterProps) {
+export default function HomePresenter({ onAddToCart, startingPrice, colorPrices, colorAvailability }: HomePresenterProps) {
   const tealName = React.useMemo(() => (colorPrices && 'Teal' in (colorPrices ?? {}) && !('Teel' in (colorPrices ?? {})) ? 'Teal' : 'Teel'), [colorPrices]);
   const colorOptions: ColorOption[] = React.useMemo(() => ([
     { name: 'Black', value: '#000000', tailwindClass: 'bg-black' },
@@ -25,6 +26,9 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices 
     { name: tealName, value: '#14B8A6', tailwindClass: 'bg-teal-500' },
   ]), [tealName]);
   const [selectedColor, setSelectedColor] = React.useState<ColorOption>(colorOptions[0]);
+  const handleAdd = React.useCallback(() => {
+    if (typeof onAddToCart === 'function') onAddToCart();
+  }, [onAddToCart]);
   return (
     <div className="min-h-screen bg-gradient-to-r from-blue-100 via-blue-200 to-blue-100">
       {/* Header */}
@@ -85,19 +89,34 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices 
                 <div className="text-sm text-blue-800">Selected: <span className="font-semibold">{selectedColor.name}</span></div>
               </div>
               
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center flex-wrap gap-4">
                 <span className="text-3xl font-bold text-blue-900">
                   {(() => {
                     const price = colorPrices?.[selectedColor.name] ?? startingPrice;
                     return price != null ? `PKR ${Number(price).toLocaleString()}` : 'PKR —';
                   })()}
                 </span>
-                <button 
-                  onClick={onAddToCart}
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-8 py-3 rounded-lg transition-all"
-                >
-                  Add to Cart
-                </button>
+                <span className="text-sm text-blue-800">
+                  {(() => {
+                    const avail = colorAvailability?.[selectedColor.name];
+                    if (avail == null) return '';
+                    return avail > 0 ? `${avail} available` : 'Out of stock';
+                  })()}
+                </span>
+                {(() => {
+                  const avail = colorAvailability?.[selectedColor.name];
+                  const disabled = typeof avail === 'number' && avail <= 0;
+                  return (
+                    <button
+                      onClick={handleAdd}
+                      disabled={disabled}
+                      aria-disabled={disabled}
+                      className={`font-medium px-8 py-3 rounded-lg transition-all text-white ${disabled ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
+                    >
+                      Add to Cart
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           </div>
