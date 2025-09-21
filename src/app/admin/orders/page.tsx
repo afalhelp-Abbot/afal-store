@@ -8,7 +8,7 @@ async function fetchOrders(search: Search) {
   const supabase = getSupabaseServerClient();
   let query = supabase
     .from('orders')
-    .select('id, status, customer_name, phone, address, city, province_code, created_at')
+    .select('id, status, customer_name, email, phone, address, city, province_code, created_at')
     .order('created_at', { ascending: false })
     .limit(50);
 
@@ -17,8 +17,8 @@ async function fetchOrders(search: Search) {
   }
   if (search.q && search.q.trim()) {
     const q = `%${search.q.trim()}%`;
-    // Search by name or phone
-    query = query.or(`customer_name.ilike.${q},phone.ilike.${q}`);
+    // Search by name, email or phone
+    query = query.or(`customer_name.ilike.${q},email.ilike.${q},phone.ilike.${q}`);
   }
   const { data, error } = await query;
   if (error) throw error;
@@ -82,6 +82,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
             <tr className="text-left border-b">
               <th className="py-2 pr-4">Order</th>
               <th className="py-2 pr-4">Customer</th>
+              <th className="py-2 pr-4">Email</th>
               <th className="py-2 pr-4">Phone</th>
               <th className="py-2 pr-4">City</th>
               <th className="py-2 pr-4">Status</th>
@@ -94,6 +95,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
               <tr key={o.id} className="border-b hover:bg-gray-50">
                 <td className="py-2 pr-4"><Link className="underline" href={`/admin/orders/${o.id}`}>#{o.id}</Link></td>
                 <td className="py-2 pr-4">{o.customer_name}</td>
+                <td className="py-2 pr-4">{o.email || '-'}</td>
                 <td className="py-2 pr-4">{o.phone}</td>
                 <td className="py-2 pr-4">{o.city} {o.province_code ? `(${o.province_code})` : ''}</td>
                 <td className="py-2 pr-4 capitalize">{o.status}</td>
