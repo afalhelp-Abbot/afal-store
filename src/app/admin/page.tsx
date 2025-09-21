@@ -16,6 +16,16 @@ export default async function AdminDashboardPage() {
           </ul>
         </div>
       </div>
+      <div className="border rounded p-4">
+        <h2 className="font-medium">Admin Capabilities (This Page)</h2>
+        <ul className="list-disc pl-5 text-sm mt-2 space-y-1 text-gray-700">
+          <li>Navigate to core admin sections using the Quick Links.</li>
+          <li>Review your signed-in account and verify admin access.</li>
+          <li>Access Inventory to edit variant <span className="font-medium">Price</span> and <span className="font-medium">On Hand</span>, or use <span className="font-medium">Quick Adjust</span>.</li>
+          <li>Open Orders to process statuses (pending → packed → shipped) and print packing slips. (Coming next)</li>
+          <li>Manage Products and Variants configuration.</li>
+        </ul>
+      </div>
     </div>
   );
 }

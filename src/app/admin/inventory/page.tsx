@@ -21,6 +21,15 @@ export default async function InventoryPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Inventory</h1>
       <p className="text-sm text-gray-600">Tip: edit Price or On Hand and press Save to update Supabase.</p>
+      <div className="border rounded p-4">
+        <h2 className="font-medium">Inventory Capabilities (This Page)</h2>
+        <ul className="list-disc pl-5 text-sm mt-2 space-y-1 text-gray-700">
+          <li>Edit variant <span className="font-medium">Price</span> and <span className="font-medium">On Hand</span> inline, then click <span className="font-medium">Save</span>.</li>
+          <li>View <span className="font-medium">Reserved</span> and computed <span className="font-medium">Available</span> quantities per SKU.</li>
+          <li>Use <span className="font-medium">Quick Adjust</span> to apply a stock delta with a reason via secure RPC.</li>
+          <li>All actions require admin auth and log changes in Supabase (via `adjust_stock`).</li>
+        </ul>
+      </div>
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead>
