@@ -1,6 +1,7 @@
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
 import BuyPanel from '@/components/web/landing/BuyPanel';
 import Image from 'next/image';
+import ImageGallery, { type MediaItem } from '@/components/web/product/ImageGallery';
 import UTMCapture from '@/components/web/landing/UTMCapture';
 
 async function fetchLpData(slug: string) {
@@ -93,41 +94,31 @@ export default async function LandingPage({ params }: { params: { slug: string }
   const { product, startingPrice, colorPrices, colorAvailability, colorVariantId } = data;
 
   return (
-    <div className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-10 items-start">
       <UTMCapture />
-      {/* Left: Content blocks (placeholder for now; Step 3 will enrich) */}
-      <div className="lg:col-span-2 space-y-8">
+      {/* Left: Gallery + Content */}
+      <div className="space-y-8">
         <header className="space-y-2">
           <h1 className="text-3xl font-semibold">{product.name}</h1>
           <p className="text-gray-600">Official Google Find My Device compatible tracker.</p>
         </header>
 
-        {/* Media Gallery (using images already in project public/images) */}
-        <section className="space-y-3">
-          <div className="relative aspect-video w-full rounded overflow-hidden bg-gray-100">
-            <Image
-              src="/images/2c6e7458128b076e82bd99f52ab130c8.avif"
-              alt={`${product.name} hero`}
-              fill
-              className="object-cover"
-              priority
-            />
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {[
-              '/images/94caacfb5a2c869439a89646703d75bb.avif',
-              '/images/3c03271147d6f8062d3cdbea740aee99.avif',
-              '/images/8f2cf7b23a638f499313f6fbf6bd4087.avif',
-              '/images/8227e60d14e5f9f681bd580a6671b3c5.avif',
-              '/images/cad05795ed848d2c89cb4b7b53970f4c.avif',
-              '/images/d3d9555482ccfc3130698b9400c07518.avif',
-              '/images/ab848a78a9c626e6cb937806b8c8fbfd.avif',
-            ].map((src) => (
-              <div key={src} className="relative aspect-square rounded overflow-hidden bg-gray-100">
-                <Image src={src} alt={`${product.name} image`} fill className="object-cover" />
-              </div>
-            ))}
-          </div>
+        {/* Media Gallery */}
+        <section>
+          {(() => {
+            const media: MediaItem[] = [
+              { type: 'video', src: '/Images/Android%20Version.mp4', poster: '/Images/2c6e7458128b076e82bd99f52ab130c8.avif', alt: 'Product demo video' },
+              { type: 'image', src: '/Images/2c6e7458128b076e82bd99f52ab130c8.avif', alt: `${product.name} hero` },
+              { type: 'image', src: '/Images/94caacfb5a2c869439a89646703d75bb.avif' },
+              { type: 'image', src: '/Images/3c03271147d6f8062d3cdbea740aee99.avif' },
+              { type: 'image', src: '/Images/8f2cf7b23a638f499313f6fbf6bd4087.avif' },
+              { type: 'image', src: '/Images/8227e60d14e5f9f681bd580a6671b3c5.avif' },
+              { type: 'image', src: '/Images/cad05795ed848d2c89cb4b7b53970f4c.avif' },
+              { type: 'image', src: '/Images/d3d9555482ccfc3130698b9400c07518.avif' },
+              { type: 'image', src: '/Images/ab848a78a9c626e6cb937806b8c8fbfd.avif' },
+            ];
+            return <ImageGallery items={media} />;
+          })()}
         </section>
 
         <section>
@@ -186,7 +177,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
       </div>
 
       {/* Right: Sticky Buy panel */}
-      <aside className="lg:col-span-1">
+      <aside>
         <div className="lg:sticky lg:top-6">
           <BuyPanel
             startingPrice={startingPrice}
@@ -209,7 +200,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     .maybeSingle();
   const title = product?.name ? `${product.name} – Afal Store` : 'Afal Store';
   const description = product?.description || 'Premium Android Tag compatible with Google Find My Device. Waterproof, long battery, compact.';
-  const ogImage = '/images/2c6e7458128b076e82bd99f52ab130c8.avif';
+  const ogImage = '/Images/2c6e7458128b076e82bd99f52ab130c8.avif';
   return {
     title,
     description,
