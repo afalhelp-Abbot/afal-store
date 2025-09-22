@@ -107,15 +107,15 @@ export default async function LandingPage({ params }: { params: { slug: string }
         <section>
           {(() => {
             const media: MediaItem[] = [
-              { type: 'video', src: '/Images/Android%20Version.mp4', poster: '/Images/2c6e7458128b076e82bd99f52ab130c8.avif', alt: 'Product demo video' },
-              { type: 'image', src: '/Images/2c6e7458128b076e82bd99f52ab130c8.avif', alt: `${product.name} hero` },
-              { type: 'image', src: '/Images/94caacfb5a2c869439a89646703d75bb.avif' },
-              { type: 'image', src: '/Images/3c03271147d6f8062d3cdbea740aee99.avif' },
-              { type: 'image', src: '/Images/8f2cf7b23a638f499313f6fbf6bd4087.avif' },
-              { type: 'image', src: '/Images/8227e60d14e5f9f681bd580a6671b3c5.avif' },
-              { type: 'image', src: '/Images/cad05795ed848d2c89cb4b7b53970f4c.avif' },
-              { type: 'image', src: '/Images/d3d9555482ccfc3130698b9400c07518.avif' },
-              { type: 'image', src: '/Images/ab848a78a9c626e6cb937806b8c8fbfd.avif' },
+              { type: 'video', src: '/images/Android%20Version.mp4', poster: '/images/2c6e7458128b076e82bd99f52ab130c8.avif', alt: 'Product demo video' },
+              { type: 'image', src: '/images/2c6e7458128b076e82bd99f52ab130c8.avif', alt: `${product.name} hero` },
+              { type: 'image', src: '/images/94caacfb5a2c869439a89646703d75bb.avif' },
+              { type: 'image', src: '/images/3c03271147d6f8062d3cdbea740aee99.avif' },
+              { type: 'image', src: '/images/8f2cf7b23a638f499313f6fbf6bd4087.avif' },
+              { type: 'image', src: '/images/8227e60d14e5f9f681bd580a6671b3c5.avif' },
+              { type: 'image', src: '/images/cad05795ed848d2c89cb4b7b53970f4c.avif' },
+              { type: 'image', src: '/images/d3d9555482ccfc3130698b9400c07518.avif' },
+              { type: 'image', src: '/images/ab848a78a9c626e6cb937806b8c8fbfd.avif' },
             ];
             return <ImageGallery items={media} />;
           })()}
@@ -200,7 +200,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     .maybeSingle();
   const title = product?.name ? `${product.name} – Afal Store` : 'Afal Store';
   const description = product?.description || 'Premium Android Tag compatible with Google Find My Device. Waterproof, long battery, compact.';
-  const ogImage = '/Images/2c6e7458128b076e82bd99f52ab130c8.avif';
+  const ogImage = '/images/2c6e7458128b076e82bd99f52ab130c8.avif';
   return {
     title,
     description,
