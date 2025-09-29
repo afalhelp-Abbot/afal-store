@@ -1,0 +1,1344 @@
+"use client";
+
+import { useEffect, useMemo, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { supabaseBrowser } from '@/lib/supabaseBrowser';
+import HelpTip from '@/components/admin/HelpTip';
+import { slugify } from '@/lib/slugify';
+
+const BUCKET = 'product-media';
+const MAX_IMAGE_MB = 10; // client-side hint, actual limit enforced by storage
+const MAX_VIDEO_MB = 50; // typical Supabase per-file cap on lower tiers
+
+type Product = {
+  id: string;
+  name: string;
+  slug: string;
+  active: boolean;
+  description_en: string | null;
+  description_ur: string | null;
+};
+
+type Media = {
+  id: string;
+  product_id: string;
+  type: 'image' | 'video';
+  url: string;
+  thumb_url: string | null;
+  poster_url: string | null;
+  alt: string | null;
+  sort: number;
+};
+
+type SpecRow = {
+  id: string;
+  product_id: string;
+  group: string | null;
+  label: string;
+  value: string;
+  lang: 'en' | 'ur';
+  sort: number;
+};
+
+type SectionRow = {
+  id: string;
+  product_id: string;
+  type: 'image' | 'gallery' | 'video' | 'rich_text';
+  title: string | null;
+  body: string | null;
+  media_refs: any;
+  sort: number;
+};
+
+export default function EditProductPage() {
+  const params = useParams() as { id: string };
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [videoReady, setVideoReady] = useState(false);
+  const [videoAdvice, setVideoAdvice] = useState<{
+    name: string;
+    sizeMB: number;
+    durationSec: number | null;
+    targetBitrateKbps: number | null;
+  } | null>(null);
+
+  // Analyze selected video to provide advice and early validation
+  const analyzeVideo = async (file: File) => {
+    try {
+      const sizeMB = Number((file.size / (1024 * 1024)).toFixed(1));
+      // Prepopulate advice with basic info
+      setVideoAdvice({ name: file.name, sizeMB, durationSec: null, targetBitrateKbps: null });
+
+      // Immediate size guard
+      if (sizeMB > MAX_VIDEO_MB) {
+        setError(`Selected video is ${sizeMB} MB which exceeds the ${MAX_VIDEO_MB} MB limit. Please compress and try again.`);
+        setVideoReady(false);
+        return;
+      }
+
+      // Load metadata to estimate target bitrate that would fit under the cap
+      const objectUrl = URL.createObjectURL(file);
+      const durationSec: number = await new Promise((resolve, reject) => {
+        const v = document.createElement('video');
+        v.preload = 'metadata';
+        v.onloadedmetadata = () => {
+          const d = v.duration;
+          URL.revokeObjectURL(objectUrl);
+          resolve(Number.isFinite(d) ? d : 0);
+        };
+        v.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error('Could not read video metadata'));
+        };
+        v.src = objectUrl;
+      });
+
+      if (durationSec && durationSec > 0) {
+        // Reserve ~2 MB for audio/containers, compute kbps to fit under limit
+        const availableMbForVideo = Math.max(1, MAX_VIDEO_MB - 2);
+        const kbps = Math.floor((availableMbForVideo * 8192) / durationSec);
+        // Clamp to a reasonable range for 720p
+        const targetBitrateKbps = Math.max(1200, Math.min(5000, kbps));
+        setVideoAdvice({ name: file.name, sizeMB, durationSec, targetBitrateKbps });
+      } else {
+        setVideoAdvice({ name: file.name, sizeMB, durationSec: null, targetBitrateKbps: null });
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Failed to analyze video');
+    }
+  };
+
+  const [product, setProduct] = useState<Product | null>(null);
+  const [media, setMedia] = useState<Media[]>([]);
+  const [specs, setSpecs] = useState<SpecRow[]>([]);
+  const [sections, setSections] = useState<SectionRow[]>([]);
+  const [colorTypeId, setColorTypeId] = useState<string | null>(null);
+  const [sizeTypeId, setSizeTypeId] = useState<string | null>(null);
+  const [modelTypeId, setModelTypeId] = useState<string | null>(null);
+  const [packageTypeId, setPackageTypeId] = useState<string | null>(null);
+  const [colors, setColors] = useState<Array<{ id: number; value: string }>>([]);
+  const [sizes, setSizes] = useState<Array<{ id: number; value: string }>>([]);
+  const [models, setModels] = useState<Array<{ id: number; value: string }>>([]);
+  const [packages, setPackages] = useState<Array<{ id: number; value: string }>>([]);
+  const [enableColor, setEnableColor] = useState<boolean>(true);
+  const [enableSize, setEnableSize] = useState<boolean>(false);
+  const [enableModel, setEnableModel] = useState<boolean>(false);
+  const [enablePackage, setEnablePackage] = useState<boolean>(false);
+
+  // Local form state
+  const [name, setName] = useState('');
+  const [slug, setSlug] = useState('');
+  const [active, setActive] = useState(false);
+  const [descriptionEn, setDescriptionEn] = useState('');
+  const [descriptionUr, setDescriptionUr] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const { data: p, error: pErr } = await supabaseBrowser
+          .from('products')
+          .select('id, name, slug, active, description_en, description_ur')
+          .eq('id', params.id)
+          .maybeSingle();
+        if (pErr) throw pErr;
+        if (!p) throw new Error('Product not found');
+        setProduct(p as any);
+        setName((p as any).name || '');
+        setSlug((p as any).slug || '');
+        setActive(!!(p as any).active);
+        setDescriptionEn((p as any).description_en || '');
+        setDescriptionUr((p as any).description_ur || '');
+
+        const { data: m, error: mErr } = await supabaseBrowser
+          .from('product_media')
+          .select('id, product_id, type, url, thumb_url, poster_url, alt, sort')
+          .eq('product_id', params.id)
+          .order('sort', { ascending: true });
+        if (mErr) throw mErr;
+        setMedia((m || []) as any);
+
+        const { data: sp, error: spErr } = await supabaseBrowser
+          .from('product_specs')
+          .select('id, product_id, group, label, value, lang, sort')
+          .eq('product_id', params.id)
+          .order('group', { ascending: true })
+          .order('sort', { ascending: true });
+        if (spErr) throw spErr;
+        setSpecs((sp || []) as any);
+
+        const { data: sec, error: secErr } = await supabaseBrowser
+          .from('product_sections')
+          .select('id, product_id, type, title, body, media_refs, sort')
+          .eq('product_id', params.id)
+          .order('sort', { ascending: true });
+        if (secErr) throw secErr;
+        setSections((sec || []) as any);
+
+        // Load Color option type id and existing color values for this product
+        const { data: ot } = await supabaseBrowser
+          .from('option_types')
+          .select('id')
+          .eq('name', 'Color')
+          .maybeSingle();
+        setColorTypeId((ot as any)?.id ?? null);
+
+        if ((ot as any)?.id) {
+          const { data: ov } = await supabaseBrowser
+            .from('option_values')
+            .select('id, value')
+            .eq('product_id', params.id)
+            .eq('option_type_id', (ot as any).id);
+          setColors(((ov || []) as any).map((r: any) => ({ id: r.id, value: r.value })));
+        }
+
+        // Load Size option type id and existing size values for this product
+        const { data: otSize } = await supabaseBrowser
+          .from('option_types')
+          .select('id')
+          .eq('name', 'Size')
+          .maybeSingle();
+        setSizeTypeId((otSize as any)?.id ?? null);
+        if ((otSize as any)?.id) {
+          const { data: sz } = await supabaseBrowser
+            .from('option_values')
+            .select('id, value')
+            .eq('product_id', params.id)
+            .eq('option_type_id', (otSize as any).id);
+          setSizes(((sz || []) as any).map((r: any) => ({ id: r.id, value: r.value })));
+        }
+
+        // Load Model option type id and existing model values
+        const { data: otModel } = await supabaseBrowser
+          .from('option_types')
+          .select('id')
+          .eq('name', 'Model')
+          .maybeSingle();
+        setModelTypeId((otModel as any)?.id ?? null);
+        if ((otModel as any)?.id) {
+          const { data: mv } = await supabaseBrowser
+            .from('option_values')
+            .select('id, value')
+            .eq('product_id', params.id)
+            .eq('option_type_id', (otModel as any).id);
+          setModels(((mv || []) as any).map((r: any) => ({ id: r.id, value: r.value })));
+        }
+
+        // Load Package option type id and existing package values
+        const { data: otPack } = await supabaseBrowser
+          .from('option_types')
+          .select('id')
+          .eq('name', 'Package')
+          .maybeSingle();
+        setPackageTypeId((otPack as any)?.id ?? null);
+        if ((otPack as any)?.id) {
+          const { data: pv } = await supabaseBrowser
+            .from('option_values')
+            .select('id, value')
+            .eq('product_id', params.id)
+            .eq('option_type_id', (otPack as any).id);
+          setPackages(((pv || []) as any).map((r: any) => ({ id: r.id, value: r.value })));
+        }
+
+        // Load product_options to set toggles
+        const { data: po } = await supabaseBrowser
+          .from('product_options')
+          .select('option_type_id')
+          .eq('product_id', params.id);
+        const typeIds = new Set((po || []).map((r: any) => String(r.option_type_id)));
+        setEnableColor(typeIds.has(String((ot as any)?.id)) || false);
+        setEnableSize(typeIds.has(String((otSize as any)?.id)) || false);
+        setEnableModel(typeIds.has(String((otModel as any)?.id)) || false);
+        setEnablePackage(typeIds.has(String((otPack as any)?.id)) || false);
+      } catch (e: any) {
+        setError(e?.message || 'Failed to load');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [params.id]);
+
+  const saveBasics = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const { error } = await supabaseBrowser
+        .from('products')
+        .update({
+          name,
+          slug,
+          active,
+          description_en: descriptionEn || null,
+          description_ur: descriptionUr || null,
+        })
+        .eq('id', params.id);
+      if (error) throw error;
+      router.refresh();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to save product');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Append uploaded URLs into a section's media_refs array
+  const appendSectionMedia = async (sectionId: string, urls: string[]) => {
+    try {
+      const current = sections.find((s) => s.id === sectionId);
+      const arr = Array.isArray(current?.media_refs) ? current!.media_refs as any[] : [];
+      await updateSection(sectionId, { media_refs: [...arr, ...urls] as any });
+    } catch (e: any) {
+      setError(e?.message || 'Failed to attach media');
+    }
+  };
+
+  const removeVariant = async (id: string) => {
+    if (!confirm('Delete this variant? This will remove inventory and option links for this variant.')) return;
+    setSaving(true);
+    setError(null);
+    try {
+      // Safety: block delete if any order_items reference this variant
+      const { data: oi } = await supabaseBrowser.from('order_items').select('order_id').eq('variant_id', id).limit(1);
+      if ((oi || []).length > 0) throw new Error('Cannot delete: this variant has orders. Set Active off instead.');
+      await supabaseBrowser.from('variant_option_values').delete().eq('variant_id', id);
+      await supabaseBrowser.from('inventory').delete().eq('variant_id', id);
+      await supabaseBrowser.from('variants').delete().eq('id', id);
+      setVariants((prev) => prev.filter((v) => v.id !== id));
+    } catch (e: any) {
+      setError(e?.message || 'Failed to delete variant');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Delete actions
+  const softDelete = async () => {
+    if (!confirm('Deactivate this product? It will be unpublished but not removed.')) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const { error } = await supabaseBrowser.from('products').update({ active: false }).eq('id', params.id);
+      if (error) throw error;
+      alert('Product deactivated.');
+      router.refresh();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to deactivate');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const hardDelete = async () => {
+    if (!confirm('Permanently delete this product and related variants, specs, sections, and media? This cannot be undone.')) return;
+    setSaving(true);
+    setError(null);
+    try {
+      // Safety check: block delete if any order_items reference its variants
+      const { data: vIds } = await supabaseBrowser.from('variants').select('id').eq('product_id', params.id);
+      const ids = (vIds || []).map((r: any) => r.id);
+      if (ids.length) {
+        const { data: oi } = await supabaseBrowser.from('order_items').select('order_id').in('variant_id', ids).limit(1);
+        if ((oi || []).length > 0) throw new Error('Cannot delete: one or more variants have orders. Deactivate instead.');
+      }
+      // Delete dependents
+      await supabaseBrowser.from('product_sections').delete().eq('product_id', params.id);
+      await supabaseBrowser.from('product_specs').delete().eq('product_id', params.id);
+      await supabaseBrowser.from('product_media').delete().eq('product_id', params.id);
+      if (ids.length) {
+        await supabaseBrowser.from('variant_option_values').delete().in('variant_id', ids);
+        await supabaseBrowser.from('inventory').delete().in('variant_id', ids);
+        await supabaseBrowser.from('variants').delete().in('id', ids);
+      }
+      await supabaseBrowser.from('products').delete().eq('id', params.id);
+      alert('Product deleted.');
+      router.push('/admin/products');
+    } catch (e: any) {
+      setError(e?.message || 'Failed to delete');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Color Options helpers
+  const addColor = async (value: string) => {
+    if (!colorTypeId) return;
+    const { data, error } = await supabaseBrowser
+      .from('option_values')
+      .insert({ product_id: params.id, option_type_id: colorTypeId, value })
+      .select('id, value')
+      .single();
+    if (!error && data) setColors((prev) => [...prev, { id: (data as any).id, value: (data as any).value }]);
+  };
+
+  // Size Options helpers
+  const addSize = async (value: string) => {
+    if (!sizeTypeId) return;
+    const { data, error } = await supabaseBrowser
+      .from('option_values')
+      .insert({ product_id: params.id, option_type_id: sizeTypeId, value })
+      .select('id, value')
+      .single();
+    if (!error && data) setSizes((prev) => [...prev, { id: (data as any).id, value: (data as any).value }]);
+  };
+
+  // Model Options helpers
+  const addModel = async (value: string) => {
+    if (!modelTypeId) return;
+    const { data, error } = await supabaseBrowser
+      .from('option_values')
+      .insert({ product_id: params.id, option_type_id: modelTypeId, value })
+      .select('id, value')
+      .single();
+    if (!error && data) setModels((prev) => [...prev, { id: (data as any).id, value: (data as any).value }]);
+  };
+
+  // Package Options helpers
+  const addPackage = async (value: string) => {
+    if (!packageTypeId) return;
+    const { data, error } = await supabaseBrowser
+      .from('option_values')
+      .insert({ product_id: params.id, option_type_id: packageTypeId, value })
+      .select('id, value')
+      .single();
+    if (!error && data) setPackages((prev) => [...prev, { id: (data as any).id, value: (data as any).value }]);
+  };
+
+  // Toggle product_options for Color/Size
+  const setOptionEnabled = async (type: 'color' | 'size' | 'model' | 'package', enabled: boolean) => {
+    const typeId = type === 'color' ? colorTypeId : type === 'size' ? sizeTypeId : type === 'model' ? modelTypeId : packageTypeId;
+    if (!typeId) return;
+    if (enabled) {
+      const { data: exists } = await supabaseBrowser
+        .from('product_options')
+        .select('product_id, option_type_id')
+        .eq('product_id', params.id)
+        .eq('option_type_id', typeId)
+        .maybeSingle();
+      if (!exists) {
+        await supabaseBrowser.from('product_options').insert({ product_id: params.id, option_type_id: typeId });
+      }
+    } else {
+      await supabaseBrowser
+        .from('product_options')
+        .delete()
+        .eq('product_id', params.id)
+        .eq('option_type_id', typeId);
+    }
+    if (type === 'color') setEnableColor(enabled);
+    else if (type === 'size') setEnableSize(enabled);
+    else if (type === 'model') setEnableModel(enabled);
+    else setEnablePackage(enabled);
+  };
+
+  // Variants + Inventory helpers
+  type VariantRow = { id: string; sku: string; price: number; active: boolean; color_value_id?: number | null; size_value_id?: number | null; model_value_id?: number | null; package_value_id?: number | null; on_hand?: number };
+  const [variants, setVariants] = useState<VariantRow[]>([]);
+
+  const loadVariants = async () => {
+    const { data: v } = await supabaseBrowser
+      .from('variants')
+      .select('id, sku, price, active')
+      .eq('product_id', params.id)
+      .order('price', { ascending: true });
+    let out: VariantRow[] = (v || []) as any;
+    // attach inventory on_hand
+    const ids = out.map((x) => x.id);
+    if (ids.length) {
+      const { data: inv } = await supabaseBrowser.from('inventory').select('variant_id, stock_on_hand').in('variant_id', ids);
+      const map = new Map<string, number>();
+      for (const r of inv || []) map.set((r as any).variant_id, Number((r as any).stock_on_hand) || 0);
+      out = out.map((x) => ({ ...x, on_hand: map.get(x.id) ?? 0 }));
+    }
+    // attach color/size value ids if exist
+    if (ids.length) {
+      const { data: links } = await supabaseBrowser
+        .from('variant_option_values')
+        .select('variant_id, option_value_id, option_values(option_type_id)')
+        .in('variant_id', ids);
+      for (const l of links || []) {
+        // only map color type
+        if ((l as any).option_values?.option_type_id === colorTypeId) {
+          const idx = out.findIndex((x) => x.id === (l as any).variant_id);
+          if (idx >= 0) out[idx].color_value_id = (l as any).option_value_id as number;
+        } else if ((l as any).option_values?.option_type_id === sizeTypeId) {
+          const idx = out.findIndex((x) => x.id === (l as any).variant_id);
+          if (idx >= 0) out[idx].size_value_id = (l as any).option_value_id as number;
+        } else if ((l as any).option_values?.option_type_id === modelTypeId) {
+          const idx = out.findIndex((x) => x.id === (l as any).variant_id);
+          if (idx >= 0) out[idx].model_value_id = (l as any).option_value_id as number;
+        } else if ((l as any).option_values?.option_type_id === packageTypeId) {
+          const idx = out.findIndex((x) => x.id === (l as any).variant_id);
+          if (idx >= 0) out[idx].package_value_id = (l as any).option_value_id as number;
+        }
+      }
+    }
+    setVariants(out);
+  };
+
+  useEffect(() => {
+    loadVariants();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [colorTypeId]);
+
+  const addVariant = async (payload: { sku: string; price: number; active: boolean; color_value_id?: number | null; size_value_id?: number | null; model_value_id?: number | null; package_value_id?: number | null }) => {
+    const { data: v, error: vErr } = await supabaseBrowser
+      .from('variants')
+      .insert({ product_id: params.id, sku: payload.sku, price: payload.price, active: payload.active })
+      .select('id, sku, price, active')
+      .single();
+    if (vErr) throw vErr;
+    const vid = (v as any).id as string;
+    if (payload.color_value_id) {
+      await supabaseBrowser
+        .from('variant_option_values')
+        .insert({ variant_id: vid, option_value_id: payload.color_value_id });
+    }
+    if (payload.size_value_id) {
+      await supabaseBrowser
+        .from('variant_option_values')
+        .insert({ variant_id: vid, option_value_id: payload.size_value_id });
+    }
+    if (payload.model_value_id) {
+      await supabaseBrowser
+        .from('variant_option_values')
+        .insert({ variant_id: vid, option_value_id: payload.model_value_id });
+    }
+    if (payload.package_value_id) {
+      await supabaseBrowser
+        .from('variant_option_values')
+        .insert({ variant_id: vid, option_value_id: payload.package_value_id });
+    }
+    setVariants((prev) => [...prev, { id: vid, sku: (v as any).sku, price: Number((v as any).price), active: !!(v as any).active, color_value_id: payload.color_value_id ?? null, size_value_id: payload.size_value_id ?? null, model_value_id: payload.model_value_id ?? null, package_value_id: payload.package_value_id ?? null, on_hand: 0 }]);
+  };
+
+  const updateVariant = async (id: string, patch: Partial<VariantRow>) => {
+    const update: any = {};
+    if (patch.sku != null) update.sku = patch.sku;
+    if (patch.price != null) update.price = patch.price;
+    if (patch.active != null) update.active = patch.active;
+    if (Object.keys(update).length) await supabaseBrowser.from('variants').update(update).eq('id', id);
+    if (patch.color_value_id != null || patch.size_value_id != null || patch.model_value_id != null || patch.package_value_id != null) {
+      // upsert mapping row for color
+      const { data: existing } = await supabaseBrowser
+        .from('variant_option_values')
+        .select('variant_id, option_value_id, option_values(option_type_id)')
+        .eq('variant_id', id);
+      if (patch.color_value_id != null) {
+        const colorLink = (existing || []).find((r: any) => r.option_values?.option_type_id === colorTypeId);
+        if (colorLink) {
+          await supabaseBrowser
+            .from('variant_option_values')
+            .update({ option_value_id: patch.color_value_id })
+            .eq('variant_id', id)
+            .eq('option_value_id', colorLink.option_value_id);
+        } else if (patch.color_value_id) {
+          await supabaseBrowser.from('variant_option_values').insert({ variant_id: id, option_value_id: patch.color_value_id });
+        }
+      }
+      if (patch.size_value_id != null) {
+        const sizeLink = (existing || []).find((r: any) => r.option_values?.option_type_id === sizeTypeId);
+        if (sizeLink) {
+          await supabaseBrowser
+            .from('variant_option_values')
+            .update({ option_value_id: patch.size_value_id })
+            .eq('variant_id', id)
+            .eq('option_value_id', sizeLink.option_value_id);
+        } else if (patch.size_value_id) {
+          await supabaseBrowser.from('variant_option_values').insert({ variant_id: id, option_value_id: patch.size_value_id });
+        }
+      }
+      if (patch.model_value_id != null) {
+        const modelLink = (existing || []).find((r: any) => r.option_values?.option_type_id === modelTypeId);
+        if (modelLink) {
+          await supabaseBrowser
+            .from('variant_option_values')
+            .update({ option_value_id: patch.model_value_id })
+            .eq('variant_id', id)
+            .eq('option_value_id', modelLink.option_value_id);
+        } else if (patch.model_value_id) {
+          await supabaseBrowser.from('variant_option_values').insert({ variant_id: id, option_value_id: patch.model_value_id });
+        }
+      }
+      if (patch.package_value_id != null) {
+        const packLink = (existing || []).find((r: any) => r.option_values?.option_type_id === packageTypeId);
+        if (packLink) {
+          await supabaseBrowser
+            .from('variant_option_values')
+            .update({ option_value_id: patch.package_value_id })
+            .eq('variant_id', id)
+            .eq('option_value_id', packLink.option_value_id);
+        } else if (patch.package_value_id) {
+          await supabaseBrowser.from('variant_option_values').insert({ variant_id: id, option_value_id: patch.package_value_id });
+        }
+      }
+    }
+    setVariants((prev) => prev.map((v) => (v.id === id ? { ...v, ...patch } : v)));
+  };
+
+  const setOnHand = async (id: string, onHand: number) => {
+    // upsert inventory row
+    const { data: inv } = await supabaseBrowser.from('inventory').select('variant_id').eq('variant_id', id).maybeSingle();
+    if (inv) {
+      await supabaseBrowser.from('inventory').update({ stock_on_hand: onHand }).eq('variant_id', id);
+    } else {
+      await supabaseBrowser.from('inventory').insert({ variant_id: id, stock_on_hand: onHand, reserved: 0 });
+    }
+    setVariants((prev) => prev.map((v) => (v.id === id ? { ...v, on_hand: onHand } : v)));
+  };
+
+  const nextSort = useMemo(() => (media.length ? Math.max(...media.map((m) => m.sort || 0)) + 1 : 0), [media]);
+
+  const uploadToBucket = async (file: File): Promise<string> => {
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'bin';
+    const path = `${params.id}/${Date.now()}-${slugify(file.name)}.${ext}`;
+    const { data, error } = await supabaseBrowser.storage.from(BUCKET).upload(path, file, { upsert: false });
+    if (error) throw error;
+    const { data: pub } = supabaseBrowser.storage.from(BUCKET).getPublicUrl(data.path);
+    return pub.publicUrl;
+  };
+
+  const addImage = async (file: File) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const url = await uploadToBucket(file);
+      const { data, error } = await supabaseBrowser
+        .from('product_media')
+        .insert({ product_id: params.id, type: 'image', url, sort: nextSort })
+        .select('*')
+        .single();
+      if (error) throw error;
+      setMedia((prev) => [...prev, data as any].sort((a, b) => a.sort - b.sort));
+    } catch (e: any) {
+      setError(e?.message || 'Failed to add image');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addVideo = async (file: File, poster?: File) => {
+    // Pre-check size before attempting upload
+    const sizeMB = Number((file.size / (1024 * 1024)).toFixed(1));
+    if (sizeMB > MAX_VIDEO_MB) {
+      setError(`Video is ${sizeMB} MB which exceeds the ${MAX_VIDEO_MB} MB limit. Please compress and try again.`);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const url = await uploadToBucket(file);
+      let posterUrl: string | undefined;
+      if (poster) {
+        posterUrl = await uploadToBucket(poster);
+      }
+      const { data, error } = await supabaseBrowser
+        .from('product_media')
+        .insert({ product_id: params.id, type: 'video', url, poster_url: posterUrl ?? null, sort: nextSort })
+        .select('*')
+        .single();
+      if (error) throw error;
+      setMedia((prev) => [...prev, data as any].sort((a, b) => a.sort - b.sort));
+    } catch (e: any) {
+      setError(e?.message || 'Failed to add video');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setAlt = async (id: string, alt: string) => {
+    const { error } = await supabaseBrowser.from('product_media').update({ alt: alt || null }).eq('id', id);
+    if (!error) setMedia((prev) => prev.map((m) => (m.id === id ? { ...m, alt } as any : m)));
+  };
+
+  const move = async (id: string, dir: 'up' | 'down') => {
+    const idx = media.findIndex((m) => m.id === id);
+    if (idx < 0) return;
+    const swapIdx = dir === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= media.length) return;
+    const a = media[idx];
+    const b = media[swapIdx];
+    // swap sort values
+    await supabaseBrowser.from('product_media').update({ sort: b.sort }).eq('id', a.id);
+    await supabaseBrowser.from('product_media').update({ sort: a.sort }).eq('id', b.id);
+    const copy = [...media];
+    copy[idx] = b; copy[swapIdx] = a;
+    setMedia(copy);
+  };
+
+  const removeMedia = async (id: string) => {
+    await supabaseBrowser.from('product_media').delete().eq('id', id);
+    setMedia((prev) => prev.filter((m) => m.id !== id));
+  };
+
+  const updateMediaField = async (id: string, field: 'thumb_url' | 'poster_url', file: File) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const url = await uploadToBucket(file);
+      const { error } = await supabaseBrowser.from('product_media').update({ [field]: url } as any).eq('id', id);
+      if (error) throw error;
+      setMedia((prev) => prev.map((m) => (m.id === id ? { ...m, [field]: url } as any : m)));
+    } catch (e: any) {
+      setError(e?.message || 'Failed to update media');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Specs Editor helpers
+  const addSpec = async (lang: 'en' | 'ur') => {
+    const { data, error } = await supabaseBrowser
+      .from('product_specs')
+      .insert({ product_id: params.id, group: null, label: 'Label', value: 'Value', lang, sort: specs.length })
+      .select('*')
+      .single();
+    if (error) {
+      setError(error.message || 'Failed to add spec');
+      return;
+    }
+    if (data) setSpecs((prev) => [...prev, data as any]);
+  };
+  const updateSpec = async (id: string, patch: Partial<SpecRow>) => {
+    const { error } = await supabaseBrowser.from('product_specs').update(patch as any).eq('id', id);
+    if (error) {
+      setError(error.message || 'Failed to update spec');
+      return;
+    }
+    setSpecs((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } as any : s)));
+  };
+  const deleteSpec = async (id: string) => {
+    const { error } = await supabaseBrowser.from('product_specs').delete().eq('id', id);
+    if (error) {
+      setError(error.message || 'Failed to delete spec');
+      return;
+    }
+    setSpecs((prev) => prev.filter((s) => s.id !== id));
+  };
+  const moveSpec = async (id: string, dir: 'up' | 'down') => {
+    const idx = specs.findIndex((s) => s.id === id);
+    if (idx < 0) return;
+    const swapIdx = dir === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= specs.length) return;
+    const a = specs[idx];
+    const b = specs[swapIdx];
+    await supabaseBrowser.from('product_specs').update({ sort: b.sort }).eq('id', a.id);
+    await supabaseBrowser.from('product_specs').update({ sort: a.sort }).eq('id', b.id);
+    const copy = [...specs];
+    copy[idx] = b; copy[swapIdx] = a;
+    setSpecs(copy);
+  };
+
+  // Sections Editor helpers
+  const addSection = async (type: SectionRow['type']) => {
+    const { data, error } = await supabaseBrowser
+      .from('product_sections')
+      .insert({ product_id: params.id, type, title: null, body: null, media_refs: [], sort: sections.length })
+      .select('*')
+      .single();
+    if (error) {
+      setError(error.message || 'Failed to add section');
+      return;
+    }
+    if (data) setSections((prev) => [...prev, data as any]);
+  };
+  const updateSection = async (id: string, patch: Partial<SectionRow>) => {
+    const { error } = await supabaseBrowser.from('product_sections').update(patch as any).eq('id', id);
+    if (error) {
+      setError(error.message || 'Failed to update section');
+      return;
+    }
+    setSections((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } as any : s)));
+  };
+  const deleteSection = async (id: string) => {
+    const { error } = await supabaseBrowser.from('product_sections').delete().eq('id', id);
+    if (error) {
+      setError(error.message || 'Failed to delete section');
+      return;
+    }
+    setSections((prev) => prev.filter((s) => s.id !== id));
+  };
+  const moveSection = async (id: string, dir: 'up' | 'down') => {
+    const idx = sections.findIndex((s) => s.id === id);
+    if (idx < 0) return;
+    const swapIdx = dir === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= sections.length) return;
+    const a = sections[idx];
+    const b = sections[swapIdx];
+    await supabaseBrowser.from('product_sections').update({ sort: b.sort }).eq('id', a.id);
+    await supabaseBrowser.from('product_sections').update({ sort: a.sort }).eq('id', b.id);
+    const copy = [...sections];
+    copy[idx] = b; copy[swapIdx] = a;
+    setSections(copy);
+  };
+
+  if (loading) return <div>Loading…</div>;
+  if (error) return <div className="text-red-600">{error}</div>;
+  if (!product) return <div>Product not found.</div>;
+
+  return (
+    <div className="space-y-8 max-w-5xl">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold">Edit Product</h1>
+        <a href={`/lp/${slug}`} target="_blank" className="px-3 py-2 rounded border">View LP</a>
+      </div>
+
+      {/* Basics */}
+      <section className="space-y-4 border rounded p-4">
+        <h2 className="font-medium">Basics</h2>
+        <div>
+          <label className="block font-medium">Name <HelpTip>Customer-facing name shown on the landing page.</HelpTip></label>
+          <input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-full border rounded px-3 py-2" />
+        </div>
+        <div>
+          <label className="block font-medium">Slug <HelpTip>Short name used in the URL, e.g. air-tag. Must be unique.</HelpTip></label>
+          <div className="flex gap-2 items-center">
+            <input value={slug} onChange={(e) => setSlug(slugify(e.target.value))} className="mt-1 flex-1 border rounded px-3 py-2" />
+            <button type="button" onClick={() => setSlug(slugify(name))} className="px-3 py-2 rounded border">Auto</button>
+          </div>
+          <p className="text-xs text-gray-600 mt-1">URL will be /lp/{'{slug}'}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <input id="active" type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+          <label htmlFor="active" className="font-medium">Active</label>
+          <HelpTip>Controls whether the product is published and visible on its landing page.</HelpTip>
+        </div>
+        <div>
+          <label className="block font-medium">Description (English) <HelpTip>Optional. Shown under the gallery on the LP. Leave empty to omit.</HelpTip></label>
+          <textarea value={descriptionEn} onChange={(e) => setDescriptionEn(e.target.value)} rows={5} className="mt-1 w-full border rounded px-3 py-2" />
+        </div>
+        <div>
+          <label className="block font-medium">Description (Urdu) <HelpTip>Optional. Shown under the gallery on the LP when provided.</HelpTip></label>
+          <textarea value={descriptionUr} onChange={(e) => setDescriptionUr(e.target.value)} rows={5} className="mt-1 w-full border rounded px-3 py-2" />
+        </div>
+        <div>
+          <button onClick={saveBasics} disabled={saving} className={`px-4 py-2 rounded text-white ${saving ? 'bg-gray-400' : 'bg-black hover:bg-gray-800'}`}>{saving ? 'Saving…' : 'Save'}</button>
+        </div>
+      </section>
+
+      {/* Danger Zone */}
+      <section className="space-y-3 border rounded p-4">
+        <h2 className="font-medium text-red-700">Danger Zone</h2>
+        <div className="flex flex-wrap gap-3">
+          <button onClick={softDelete} className="px-4 py-2 rounded border border-amber-600 text-amber-700">Deactivate (soft delete)</button>
+          <button onClick={hardDelete} className="px-4 py-2 rounded border border-red-700 text-red-700">Delete permanently</button>
+        </div>
+        <p className="text-xs text-gray-600">Permanent delete is blocked if any orders exist for this product's variants.</p>
+        <p className="text-xs text-gray-600">Note: media files in Storage are not removed automatically in this version. We can add file-path tracking to support that later.</p>
+      </section>
+
+      {/* Variation Types */}
+      <section className="space-y-2 border rounded p-4">
+        <h2 className="font-medium">Variation types <HelpTip>Enable the dimensions you want to sell. Turning on a type allows creating variants that reference those values.</HelpTip></h2>
+        <div className="flex items-center gap-6 text-sm">
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" checked={enableColor} onChange={(e)=>setOptionEnabled('color', e.target.checked)} /> Color
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" checked={enableSize} onChange={(e)=>setOptionEnabled('size', e.target.checked)} /> Size
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" checked={enableModel} onChange={(e)=>setOptionEnabled('model', e.target.checked)} /> Model
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input type="checkbox" checked={enablePackage} onChange={(e)=>setOptionEnabled('package', e.target.checked)} /> Package
+          </label>
+        </div>
+      </section>
+
+      {/* Color/Size Options & Variants + Inventory */}
+      <section className="space-y-4 border rounded p-4">
+        <h2 className="font-medium">Variants & Inventory <HelpTip>Configure variant combinations, prices, and on-hand stock. Changes save inline on blur/click.</HelpTip></h2>
+        <div className="space-y-3">
+          <div>
+            <h3 className="font-medium mb-2">Colors <HelpTip>Manage color values used for variants and the LP color chips.</HelpTip></h3>
+            {enableColor ? (
+              <>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {colors.map((c) => (
+                    <span key={c.id} className="px-2 py-1 rounded-full border text-sm">{c.value}</span>
+                  ))}
+                </div>
+                <div className="flex gap-2 items-center text-sm">
+                  <input id="new-color" placeholder="Add color (e.g., Black)" className="border rounded px-2 py-1" />
+                  <button className="px-3 py-1 rounded border" onClick={() => {
+                    const v = (document.getElementById('new-color') as HTMLInputElement).value.trim();
+                    if (v) { addColor(v); (document.getElementById('new-color') as HTMLInputElement).value=''; }
+                  }}>Add Color</button>
+                  <HelpTip>Colors power the LP color chips and pricing per color.</HelpTip>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-gray-500">Color variations disabled.</p>
+            )}
+          </div>
+
+          <div>
+            <h3 className="font-medium mb-2">Sizes <HelpTip>Add sizes like S/M/L. Only shown if Size is enabled above.</HelpTip></h3>
+            {enableSize ? (
+              <>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {sizes.map((s) => (
+                    <span key={s.id} className="px-2 py-1 rounded-full border text-sm">{s.value}</span>
+                  ))}
+                </div>
+                <div className="flex gap-2 items-center text-sm">
+                  <input id="new-size" placeholder="Add size (e.g., M)" className="border rounded px-2 py-1" />
+                  <button className="px-3 py-1 rounded border" onClick={() => {
+                    const v = (document.getElementById('new-size') as HTMLInputElement).value.trim();
+                    if (v) { addSize(v); (document.getElementById('new-size') as HTMLInputElement).value=''; }
+                  }}>Add Size</button>
+                  <HelpTip>Sizes let you manage S/M/L etc. alongside colors.</HelpTip>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-gray-500">Size variations disabled.</p>
+            )}
+          </div>
+
+          <div>
+            <h3 className="font-medium mb-2">Models <HelpTip>Optional dimension for product style or edition (e.g., Pro).</HelpTip></h3>
+            {enableModel ? (
+              <>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {models.map((m) => (
+                    <span key={m.id} className="px-2 py-1 rounded-full border text-sm">{m.value}</span>
+                  ))}
+                </div>
+                <div className="flex gap-2 items-center text-sm">
+                  <input id="new-model" placeholder="Add model (e.g., Pro)" className="border rounded px-2 py-1" />
+                  <button className="px-3 py-1 rounded border" onClick={() => {
+                    const v = (document.getElementById('new-model') as HTMLInputElement).value.trim();
+                    if (v) { addModel(v); (document.getElementById('new-model') as HTMLInputElement).value=''; }
+                  }}>Add Model</button>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-gray-500">Model variations disabled.</p>
+            )}
+          </div>
+
+          <div>
+            <h3 className="font-medium mb-2">Packages <HelpTip>Optional pack counts or bundles (e.g., 1-pack, 4-pack).</HelpTip></h3>
+            {enablePackage ? (
+              <>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {packages.map((p) => (
+                    <span key={p.id} className="px-2 py-1 rounded-full border text-sm">{p.value}</span>
+                  ))}
+                </div>
+                <div className="flex gap-2 items-center text-sm">
+                  <input id="new-package" placeholder="Add package (e.g., 1-pack)" className="border rounded px-2 py-1" />
+                  <button className="px-3 py-1 rounded border" onClick={() => {
+                    const v = (document.getElementById('new-package') as HTMLInputElement).value.trim();
+                    if (v) { addPackage(v); (document.getElementById('new-package') as HTMLInputElement).value=''; }
+                  }}>Add Package</button>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-gray-500">Package variations disabled.</p>
+            )}
+          </div>
+
+          <div>
+            <h3 className="font-medium mb-2">Add Variant <HelpTip>Create a new sellable SKU by combining options and setting price/active.</HelpTip></h3>
+            <div className="flex flex-wrap gap-2 items-end">
+              <div>
+                <label className="block text-xs">SKU <HelpTip>Your internal code for the specific variant. Must be unique.</HelpTip></label>
+                <input id="v-sku" className="border rounded px-2 py-1" />
+              </div>
+              <div>
+                <label className="block text-xs">Price <HelpTip>Sale price shown to customers for this variant.</HelpTip></label>
+                <input id="v-price" type="number" step="0.01" className="border rounded px-2 py-1 w-32" />
+              </div>
+              <div>
+                <label className="block text-xs">Color <HelpTip>Optional. Choose a color value to associate with this variant.</HelpTip></label>
+                <select id="v-color" className="border rounded px-2 py-1">
+                  <option value="">(none)</option>
+                  {colors.map((c) => (
+                    <option key={c.id} value={c.id}>{c.value}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs">Size <HelpTip>Optional. Choose a size value for this variant.</HelpTip></label>
+                <select id="v-size" className="border rounded px-2 py-1">
+                  <option value="">(none)</option>
+                  {sizes.map((s) => (
+                    <option key={s.id} value={s.id}>{s.value}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs">Model <HelpTip>Optional. Variant model/style if the type is enabled.</HelpTip></label>
+                <select id="v-model" className="border rounded px-2 py-1">
+                  <option value="">(none)</option>
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>{m.value}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs">Package <HelpTip>Optional. Pack count/bundle selection.</HelpTip></label>
+                <select id="v-package" className="border rounded px-2 py-1">
+                  <option value="">(none)</option>
+                  {packages.map((p) => (
+                    <option key={p.id} value={p.id}>{p.value}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <input id="v-active" type="checkbox" defaultChecked />
+                <label htmlFor="v-active" className="text-sm">Active <HelpTip>Uncheck to hide this variant from purchase without deleting it.</HelpTip></label>
+              </div>
+              <button className="px-3 py-1 rounded border" onClick={() => {
+                const sku = (document.getElementById('v-sku') as HTMLInputElement).value.trim();
+                const price = Number((document.getElementById('v-price') as HTMLInputElement).value || '0');
+                const colorVal = (document.getElementById('v-color') as HTMLSelectElement).value;
+                const sizeVal = (document.getElementById('v-size') as HTMLSelectElement).value;
+                const modelVal = (document.getElementById('v-model') as HTMLSelectElement).value;
+                const packVal = (document.getElementById('v-package') as HTMLSelectElement).value;
+                const active = (document.getElementById('v-active') as HTMLInputElement).checked;
+                if (!sku || !Number.isFinite(price)) return;
+                addVariant({ sku, price, active, color_value_id: colorVal ? Number(colorVal) : null, size_value_id: sizeVal ? Number(sizeVal) : null, model_value_id: modelVal ? Number(modelVal) : null, package_value_id: packVal ? Number(packVal) : null });
+                (document.getElementById('v-sku') as HTMLInputElement).value='';
+                (document.getElementById('v-price') as HTMLInputElement).value='';
+              }}>Add</button>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="font-medium mb-2">Variants</h3>
+            <div className="overflow-auto">
+              <table className="w-full text-sm min-w-[640px]">
+                <thead>
+                  <tr className="text-left border-b">
+                    <th className="py-2 pr-3">SKU</th>
+                    <th className="py-2 pr-3">Color</th>
+                    <th className="py-2 pr-3">Size</th>
+                    <th className="py-2 pr-3">Model</th>
+                    <th className="py-2 pr-3">Package</th>
+                    <th className="py-2 pr-3">Price</th>
+                    <th className="py-2 pr-3">On Hand</th>
+                    <th className="py-2 pr-3">Active</th>
+                    <th className="py-2 pr-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {variants.map((v) => (
+                    <tr key={v.id} className="border-b last:border-0">
+                      <td className="py-2 pr-3">
+                        <input defaultValue={v.sku} onBlur={(e)=>updateVariant(v.id,{ sku: e.target.value })} className="border rounded px-2 py-1" />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <select defaultValue={v.color_value_id ?? ''} onChange={(e)=>updateVariant(v.id,{ color_value_id: e.target.value ? Number(e.target.value) : null })} className="border rounded px-2 py-1">
+                          <option value="">(none)</option>
+                          {colors.map((c) => (
+                            <option key={c.id} value={c.id}>{c.value}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-2 pr-3">
+                        <select defaultValue={v.size_value_id ?? ''} onChange={(e)=>updateVariant(v.id,{ size_value_id: e.target.value ? Number(e.target.value) : null })} className="border rounded px-2 py-1">
+                          <option value="">(none)</option>
+                          {sizes.map((s) => (
+                            <option key={s.id} value={s.id}>{s.value}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-2 pr-3">
+                        <select defaultValue={v.model_value_id ?? ''} onChange={(e)=>updateVariant(v.id,{ model_value_id: e.target.value ? Number(e.target.value) : null })} className="border rounded px-2 py-1">
+                          <option value="">(none)</option>
+                          {models.map((m) => (
+                            <option key={m.id} value={m.id}>{m.value}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-2 pr-3">
+                        <select defaultValue={v.package_value_id ?? ''} onChange={(e)=>updateVariant(v.id,{ package_value_id: e.target.value ? Number(e.target.value) : null })} className="border rounded px-2 py-1">
+                          <option value="">(none)</option>
+                          {packages.map((p) => (
+                            <option key={p.id} value={p.id}>{p.value}</option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input type="number" step="0.01" defaultValue={v.price} onBlur={(e)=>updateVariant(v.id,{ price: Number(e.target.value) })} className="border rounded px-2 py-1 w-28" />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input type="number" defaultValue={v.on_hand ?? 0} onBlur={(e)=>setOnHand(v.id, Number(e.target.value))} className="border rounded px-2 py-1 w-24" />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <input type="checkbox" defaultChecked={v.active} onChange={(e)=>updateVariant(v.id,{ active: e.target.checked })} />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <button onClick={()=>removeVariant(v.id)} className="px-2 py-1 rounded border text-xs">Delete</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Specifications Editor */}
+      <section className="space-y-4 border rounded p-4">
+        <h2 className="font-medium">Specifications <HelpTip>Key facts shown below the gallery on the landing page. Use Group to visually cluster rows.</HelpTip></h2>
+        <div className="flex gap-2 mb-3">
+          <button className="px-3 py-1 rounded border text-sm" onClick={() => addSpec('en')}>+ Add (EN)</button>
+          <button className="px-3 py-1 rounded border text-sm" onClick={() => addSpec('ur')}>+ Add (UR)</button>
+        </div>
+        <div className="grid md:grid-cols-2 gap-6">
+          {(['en','ur'] as const).map((lng) => (
+            <div key={lng} className={lng === 'ur' ? 'font-urdu' : ''} dir={lng === 'ur' ? 'rtl' : undefined}>
+              <h3 className="font-medium mb-2">{lng.toUpperCase()} <HelpTip>Enter rows as Label/Value; optional Group to cluster related rows. Order with arrows.</HelpTip></h3>
+              {(specs.filter(s => s.lang === lng)).map((s, idx) => (
+                <div key={s.id} className="border rounded p-2 mb-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex gap-1">
+                      <button disabled={idx===0} className="px-2 py-1 rounded border text-xs disabled:opacity-50" onClick={() => moveSpec(s.id,'up')}>↑</button>
+                      <button disabled={idx===specs.filter(x=>x.lang===lng).length-1} className="px-2 py-1 rounded border text-xs disabled:opacity-50" onClick={() => moveSpec(s.id,'down')}>↓</button>
+                    </div>
+                    <button className="px-2 py-1 rounded border text-xs" onClick={() => deleteSpec(s.id)}>Remove</button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <input placeholder="Group" defaultValue={s.group ?? ''} onBlur={(e)=>updateSpec(s.id,{ group: e.target.value || null })} className="border rounded px-2 py-1" />
+                    <input placeholder="Label" defaultValue={s.label} onBlur={(e)=>updateSpec(s.id,{ label: e.target.value })} className="border rounded px-2 py-1" />
+                    <input placeholder="Value" defaultValue={s.value} onBlur={(e)=>updateSpec(s.id,{ value: e.target.value })} className="border rounded px-2 py-1" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Bottom Sections Editor */}
+      <section className="space-y-4 border rounded p-4">
+        <h2 className="font-medium">Bottom Sections <HelpTip>Optional sections shown beneath the main gallery: images, galleries, videos, or rich text blocks.</HelpTip></h2>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {(['image','gallery','video','rich_text'] as const).map((t) => (
+            <button key={t} className="px-3 py-1 rounded border text-sm" onClick={() => addSection(t)}>+ Add {t}</button>
+          ))}
+        </div>
+        <div className="space-y-3">
+          {sections.map((sec, idx) => (
+            <div key={sec.id} className="border rounded p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs px-2 py-0.5 rounded bg-gray-100">{sec.type}</span>
+                <div className="flex gap-1">
+                  <button disabled={idx===0} className="px-2 py-1 rounded border text-xs disabled:opacity-50" onClick={()=>moveSection(sec.id,'up')}>↑</button>
+                  <button disabled={idx===sections.length-1} className="px-2 py-1 rounded border text-xs disabled:opacity-50" onClick={()=>moveSection(sec.id,'down')}>↓</button>
+                  <button className="px-2 py-1 rounded border text-xs" onClick={()=>deleteSection(sec.id)}>Remove</button>
+                </div>
+              </div>
+              <div className="grid md:grid-cols-2 gap-3 text-sm">
+                <div>
+                  <label className="block text-xs">Title <HelpTip>Optional heading for this section.</HelpTip></label>
+                  <input defaultValue={sec.title ?? ''} onBlur={(e)=>updateSection(sec.id,{ title: e.target.value || null })} className="w-full border rounded px-2 py-1" />
+                </div>
+                {sec.type === 'rich_text' ? (
+                  <div className="md:col-span-2">
+                    <label className="block text-xs">Body (HTML allowed) <HelpTip>Use simple HTML for formatting (e.g., <strong>bold</strong>, lists).</HelpTip></label>
+                    <textarea defaultValue={sec.body ?? ''} onBlur={(e)=>updateSection(sec.id,{ body: e.target.value || null })} rows={4} className="w-full border rounded px-2 py-1" />
+                  </div>
+                ) : (
+                  <div className="md:col-span-2">
+                    <label className="block text-xs">Media URLs (comma-separated) <HelpTip>Paste one or more public URLs, separated by commas. Uploaded files append here automatically.</HelpTip></label>
+                    <input defaultValue={Array.isArray(sec.media_refs)? sec.media_refs.join(',') : ''}
+                      onBlur={(e)=>updateSection(sec.id,{ media_refs: e.target.value.split(',').map(v=>v.trim()).filter(Boolean) })}
+                      className="w-full border rounded px-2 py-1" />
+                    {/* Visual previews for current media_refs */}
+                    {Array.isArray(sec.media_refs) && sec.media_refs.length > 0 && (
+                      <div className="mt-2">
+                        <div className="text-xs text-gray-600 mb-1">Items: {sec.media_refs.length}</div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                          {sec.media_refs.map((u: string, i: number) => (
+                            <div key={i} className="relative border rounded overflow-hidden bg-gray-50 aspect-[1/1]">
+                              {/* Simple type heuristic */}
+                              {sec.type === 'video' || /\.(mp4|webm|mov)(\?|#|$)/i.test(u) ? (
+                                <video className="absolute inset-0 w-full h-full object-cover" controls>
+                                  <source src={u} />
+                                </video>
+                              ) : (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={u} alt={`media ${i+1}`} className="absolute inset-0 w-full h-full object-cover" />
+                              )}
+                              <button
+                                className="absolute top-1 right-1 bg-white/80 hover:bg-white text-xs px-1.5 py-0.5 rounded border"
+                                title="Remove"
+                                onClick={async () => {
+                                  const list = (sec.media_refs as string[]).filter((_, idx) => idx !== i);
+                                  await updateSection(sec.id, { media_refs: list as any });
+                                }}
+                              >×</button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* Upload from computer */}
+                    {sec.type === 'image' && (
+                      <div className="mt-2 text-xs">
+                        <label className="block mb-1">Upload image <HelpTip>Choose an image from your computer to store and attach to this section.</HelpTip></label>
+                        <input type="file" accept="image/*" onChange={async (e)=>{
+                          const inputEl = e.currentTarget as HTMLInputElement;
+                          const f = inputEl.files?.[0];
+                          if (!f) return;
+                          try {
+                            setSaving(true);
+                            const url = await uploadToBucket(f);
+                            await appendSectionMedia(sec.id, [url]);
+                          } catch (err:any) { setError(err?.message || 'Upload failed'); } finally { setSaving(false); if (inputEl) inputEl.value=''; }
+                        }} />
+                      </div>
+                    )}
+                    {sec.type === 'gallery' && (
+                      <div className="mt-2 text-xs">
+                        <label className="block mb-1">Upload images (multiple) <HelpTip>Select multiple images; they will be uploaded and added to the URL list.</HelpTip></label>
+                        <input type="file" accept="image/*" multiple onChange={async (e)=>{
+                          const inputEl = e.currentTarget as HTMLInputElement;
+                          const files = Array.from(inputEl.files || []);
+                          if (!files.length) return;
+                          try {
+                            setSaving(true);
+                            const urls = await Promise.all(files.map(uploadToBucket));
+                            await appendSectionMedia(sec.id, urls);
+                          } catch (err:any) { setError(err?.message || 'Upload failed'); } finally { setSaving(false); if (inputEl) inputEl.value=''; }
+                        }} />
+                      </div>
+                    )}
+                    {sec.type === 'video' && (
+                      <div className="mt-2 text-xs">
+                        <label className="block mb-1">Upload video <HelpTip>Upload an MP4/H.264 clip. Keep size under the project limit for best playback.</HelpTip></label>
+                        <input type="file" accept="video/*" onChange={async (e)=>{
+                          const inputEl = e.currentTarget as HTMLInputElement;
+                          const f = inputEl.files?.[0];
+                          if (!f) return;
+                          try {
+                            setSaving(true);
+                            const url = await uploadToBucket(f);
+                            await appendSectionMedia(sec.id, [url]);
+                          } catch (err:any) { setError(err?.message || 'Upload failed'); } finally { setSaving(false); if (inputEl) inputEl.value=''; }
+                        }} />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Media Manager */}
+      <section className="space-y-4 border rounded p-4">
+        <h2 className="font-medium">Media (Top Gallery) <HelpTip>Manage the main gallery shown at the top of the landing page. The first item is the hero. Reorder with arrows.</HelpTip></h2>
+        <p className="text-sm text-gray-600">First item becomes the hero image/video. Use the arrows to reorder. Add images or a video (with optional poster). Thumbnails on the left rail can use a smaller override if needed.</p>
+
+        <div className="flex flex-wrap gap-3">
+          {media.map((m, idx) => (
+            <div key={m.id} className="border rounded p-2 w-56">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs px-2 py-0.5 rounded bg-gray-100">{m.type}</span>
+                <div className="flex gap-1">
+                  <button disabled={idx===0} onClick={() => move(m.id, 'up')} className="px-2 py-1 rounded border text-xs disabled:opacity-50">↑</button>
+                  <button disabled={idx===media.length-1} onClick={() => move(m.id, 'down')} className="px-2 py-1 rounded border text-xs disabled:opacity-50">↓</button>
+                </div>
+              </div>
+              <div className="mb-2">
+                {m.type === 'image' ? (
+                  <div className="relative w-full aspect-[1/1] border rounded overflow-hidden bg-gray-50">
+                    {/* use thumb if present, else full url */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={m.thumb_url || m.url} alt={m.alt || ''} className="absolute inset-0 w-full h-full object-cover" />
+                  </div>
+                ) : (
+                  <div className="relative w-full aspect-[1/1] border rounded overflow-hidden bg-gray-50 grid place-items-center">
+                    <video className="max-w-full max-h-full" poster={m.poster_url || undefined} controls>
+                      <source src={m.url} />
+                    </video>
+                  </div>
+                )}
+                <details className="mt-1">
+                  <summary className="text-xs text-gray-600 cursor-pointer">Show URL</summary>
+                  <div className="text-[10px] break-all mt-1">{m.url}</div>
+                </details>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-xs">Alt <HelpTip>Short description for accessibility and SEO.</HelpTip></label>
+                <input defaultValue={m.alt ?? ''} onBlur={(e) => setAlt(m.id, e.target.value)} className="w-full border rounded px-2 py-1 text-sm" />
+                {m.type === 'image' && (
+                  <div className="mt-2 space-y-1">
+                    <label className="block text-xs">Thumbnail override (optional) <HelpTip>Use a smaller, cropped, or optimized image for the sidebar thumbnail if desired.</HelpTip></label>
+                    <input type="file" accept="image/*" onChange={(e)=> e.target.files && updateMediaField(m.id,'thumb_url', e.target.files[0])} />
+                    {m.thumb_url && <div className="text-[10px] text-gray-600 break-all">thumb: {m.thumb_url}</div>}
+                  </div>
+                )}
+                {m.type === 'video' && (
+                  <div className="mt-2 space-y-1">
+                    <label className="block text-xs">Poster image (optional) <HelpTip>Still image shown before playback or if video cannot auto-play.</HelpTip></label>
+                    <input type="file" accept="image/*" onChange={(e)=> e.target.files && updateMediaField(m.id,'poster_url', e.target.files[0])} />
+                    {m.poster_url && <div className="text-[10px] text-gray-600 break-all">poster: {m.poster_url}</div>}
+                  </div>
+                )}
+                <button onClick={() => removeMedia(m.id)} className="mt-2 w-full px-2 py-1 rounded border text-xs">Remove</button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="space-y-2">
+            <label className="block font-medium">Add image <HelpTip>Upload a new image to the gallery. It will appear at the end; reorder as needed.</HelpTip></label>
+            <input type="file" accept="image/*" onChange={(e) => e.target.files && addImage(e.target.files[0])} />
+          </div>
+          <div className="space-y-2">
+            <label className="block font-medium">Add video <HelpTip>Upload one video to the gallery. Consider 720p MP4/H.264 for compatibility.</HelpTip></label>
+            <input id="video-file" type="file" accept="video/*" onChange={(e)=> { const f = e.currentTarget.files?.[0]; setVideoReady(!!f); if (f) analyzeVideo(f); }} />
+            <div className="text-xs text-gray-500">Max {MAX_VIDEO_MB} MB. Use MP4/H.264 for best compatibility.</div>
+            <div>
+              <button
+                disabled={!videoReady}
+                className={`px-3 py-2 rounded border ${videoReady ? (saving ? 'bg-gray-400 text-white' : 'bg-black text-white hover:bg-gray-900') : 'bg-gray-200 text-gray-600 cursor-not-allowed'}`}
+                onClick={async () => {
+                  const inputEl = document.getElementById('video-file') as HTMLInputElement | null;
+                  const v = inputEl?.files?.[0];
+                  if (!v) return;
+                  await addVideo(v);
+                  if (inputEl) inputEl.value = '';
+                  setVideoReady(false);
+                  setVideoAdvice(null);
+                }}
+              >{saving ? 'Uploading…' : 'Upload video'}</button>
+            </div>
+            {videoAdvice && (
+              <div className="mt-2 p-2 border rounded bg-gray-50 text-xs">
+                <div><span className="font-medium">Selected:</span> {videoAdvice.name} ({videoAdvice.sizeMB} MB)</div>
+                {videoAdvice.durationSec != null ? (
+                  <>
+                    <div><span className="font-medium">Duration:</span> {Math.round(videoAdvice.durationSec)} sec</div>
+                    <div>
+                      <span className="font-medium">Target bitrate:</span> {videoAdvice.targetBitrateKbps} kbps video + ~128 kbps audio
+                    </div>
+                    <div className="mt-1 font-mono whitespace-pre-wrap break-words">
+{`ffmpeg -i input.mp4 -vcodec libx264 -b:v ${videoAdvice.targetBitrateKbps}k -acodec aac -b:a 128k -movflags +faststart -preset medium -vf "scale=-2:720" output.mp4`}
+                    </div>
+                  </>
+                ) : (
+                  <div>Could not read duration. You can still try exporting at 720p, ~2500 kbps video.</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <div className="text-xs text-gray-500">More editors (Options/Variants, Specs, Bottom Sections) will appear here next.</div>
+    </div>
+  );
+}

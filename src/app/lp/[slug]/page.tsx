@@ -4,15 +4,84 @@ import Image from 'next/image';
 import ImageGallery, { type MediaItem } from '@/components/web/product/ImageGallery';
 import UTMCapture from '@/components/web/landing/UTMCapture';
 
+// Render helper: if the string looks like HTML, inject as HTML. Otherwise, render paragraphs
+// and preserve single line breaks. Urdu is rendered RTL with the Urdu font class.
+function renderDescriptionBlock(text: string, lang: 'en' | 'ur') {
+  if (!text) return null;
+  const looksLikeHtml = /<[^>]+>/.test(text);
+  const baseCls = 'prose max-w-none';
+  const dir = lang === 'ur' ? 'rtl' : undefined;
+  const langCls = lang === 'ur' ? 'font-urdu' : '';
+
+  if (looksLikeHtml) {
+    return (
+      <div className={`${baseCls} ${langCls}`} dir={dir} dangerouslySetInnerHTML={{ __html: text }} />
+    );
+  }
+
+  const paragraphs = text
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  return (
+    <div className={`${baseCls} ${langCls}`} dir={dir}>
+      {paragraphs.map((p, i) => (
+        <p key={i}>
+          {p.split(/\n/).map((line, j) => (
+            <>
+              {j > 0 && <br />}
+              {line}
+            </>
+          ))}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+// Render spec value with basic URL linkification
+function renderSpecValue(value: string) {
+  if (!value) return null;
+  const parts = value.split(/(https?:\/\/[^\s]+|www\.[^\s]+)/g);
+  return (
+    <>
+      {parts.map((part, i) => {
+        const isUrl = /^(https?:\/\/|www\.)/.test(part);
+        if (!isUrl) return <span key={i}>{part}</span>;
+        const href = part.startsWith('http') ? part : `https://${part}`;
+        return (
+          <a key={i} href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline break-words">
+            {part}
+          </a>
+        );
+      })}
+    </>
+  );
+}
+
 async function fetchLpData(slug: string) {
   const supabase = getSupabaseServerClient();
   // 1) Product by slug
   const { data: product } = await supabase
     .from('products')
-    .select('id, name, slug, description')
+    .select('id, name, slug, description_en, description_ur, active')
     .eq('slug', slug)
+    .eq('active', true)
     .maybeSingle();
   if (!product?.id) return null;
+
+  // 1b) Media for top gallery
+  const { data: mediaRows } = await supabase
+    .from('product_media')
+    .select('type, url, thumb_url, poster_url, alt, sort')
+    .eq('product_id', product.id)
+    .order('sort', { ascending: true });
+  const mediaItems: MediaItem[] = (mediaRows ?? []).map((m: any) =>
+    m.type === 'video'
+      ? ({ type: 'video', src: m.url as string, poster: m.poster_url as string | undefined, alt: m.alt as string | undefined })
+      : ({ type: 'image', src: m.url as string, alt: m.alt as string | undefined, thumb: (m.thumb_url as string | undefined) })
+  );
 
   // 2) Active variants (id, sku, price)
   const { data: variants } = await supabase
@@ -35,53 +104,113 @@ async function fetchLpData(slug: string) {
     availabilityByVariant[vId] = on - res;
   }
 
-  // 4) Map variant -> Color name
+  // 4) Map variant -> option values (Color/Model/Package)
   const { data: colorType } = await supabase
     .from('option_types')
     .select('id')
     .eq('name', 'Color')
     .maybeSingle();
+  const { data: modelType } = await supabase
+    .from('option_types')
+    .select('id')
+    .eq('name', 'Model')
+    .maybeSingle();
+  const { data: packageType } = await supabase
+    .from('option_types')
+    .select('id')
+    .eq('name', 'Package')
+    .maybeSingle();
+  const { data: sizeType } = await supabase
+    .from('option_types')
+    .select('id')
+    .eq('name', 'Size')
+    .maybeSingle();
   const colorTypeId = colorType?.id as string | undefined;
+  const modelTypeId = modelType?.id as string | undefined;
+  const packageTypeId = packageType?.id as string | undefined;
+  const sizeTypeId = sizeType?.id as string | undefined;
 
   const variantIds = (variants ?? []).map((v: any) => v.id);
   let colorByVariant: Record<string, string> = {};
-  if (colorTypeId && variantIds.length) {
+  let modelByVariant: Record<string, string> = {};
+  let packageByVariant: Record<string, string> = {};
+  let sizeByVariant: Record<string, string> = {};
+  if (variantIds.length) {
     const { data: mapping } = await supabase
       .from('variant_option_values')
       .select('variant_id, option_values(value, option_type_id)')
-      .in('variant_id', variantIds)
-      .eq('option_values.option_type_id', colorTypeId);
+      .in('variant_id', variantIds);
     for (const row of mapping ?? []) {
-      const value = (row as any).option_values?.value as string | undefined;
-      if (value) colorByVariant[(row as any).variant_id as string] = value;
+      const vId = (row as any).variant_id as string;
+      const ov = (row as any).option_values as any;
+      if (!ov) continue;
+      if (colorTypeId && ov.option_type_id === colorTypeId && ov.value) colorByVariant[vId] = ov.value as string;
+      if (modelTypeId && ov.option_type_id === modelTypeId && ov.value) modelByVariant[vId] = ov.value as string;
+      if (packageTypeId && ov.option_type_id === packageTypeId && ov.value) packageByVariant[vId] = ov.value as string;
+      if (sizeTypeId && ov.option_type_id === sizeTypeId && ov.value) sizeByVariant[vId] = ov.value as string;
     }
   }
 
-  // 5) Aggregate per color
-  const colorPrices: Record<string, number> = {};
-  const colorAvailability: Record<string, number> = {};
-  const colorVariantId: Record<string, string> = {};
+  // 5) Aggregate combinations (Color x Model x Package x Size)
+  const key = (c?: string, m?: string, p?: string, s?: string) => `${c || ''}|${m || ''}|${p || ''}|${s || ''}`;
+  const matrix: Record<string, { price: number; availability: number; variantId: string } > = {};
+  const colorsSet = new Set<string>();
+  const modelsSet = new Set<string>();
+  const packagesSet = new Set<string>();
+  const sizesSet = new Set<string>();
   for (const v of variants ?? []) {
     const id = (v as any).id as string;
     const price = Number((v as any).price);
     const color = colorByVariant[id] ?? ((((v as any).sku || '').split('-')[1]) || 'Default');
-    // pick the lowest price per color and remember that variant id
-    if (!(color in colorPrices) || price < colorPrices[color]) {
-      colorPrices[color] = price;
-      colorVariantId[color] = id;
+    const model = modelByVariant[id];
+    const pack = packageByVariant[id];
+    const size = sizeByVariant[id];
+    colorsSet.add(color);
+    if (model) modelsSet.add(model);
+    if (pack) packagesSet.add(pack);
+    if (size) sizesSet.add(size);
+    const k = key(color, model, pack, size);
+    const avail = availabilityByVariant[id] ?? 0;
+    if (!matrix[k]) {
+      matrix[k] = { price, availability: avail, variantId: id };
+    } else {
+      // If duplicate combo, keep lowest price and sum availability
+      matrix[k].price = Math.min(matrix[k].price, price);
+      matrix[k].availability += avail;
+      if (price <= matrix[k].price) matrix[k].variantId = id;
     }
-    colorAvailability[color] = (colorAvailability[color] ?? 0) + (availabilityByVariant[id] ?? 0);
   }
+  const colors = Array.from(colorsSet).sort();
+  const models = Array.from(modelsSet).sort();
+  const packages = Array.from(packagesSet).sort();
+  const sizes = Array.from(sizesSet).sort();
 
-  const startingPrice = Object.values(colorPrices).sort((a, b) => a - b)[0] ?? null;
+  // 6) Specs (grouped, bilingual)
+  const { data: specs } = await supabase
+    .from('product_specs')
+    .select('group, label, value, lang, sort')
+    .eq('product_id', product.id)
+    .order('group', { ascending: true })
+    .order('sort', { ascending: true });
+
+  // 7) Bottom sections (long-form)
+  const { data: sections } = await supabase
+    .from('product_sections')
+    .select('type, title, body, media_refs, sort')
+    .eq('product_id', product.id)
+    .order('sort', { ascending: true });
 
   return {
     product,
+    mediaItems,
     variants: variants ?? [],
-    startingPrice,
-    colorPrices,
-    colorAvailability,
-    colorVariantId,
+    colors,
+    models,
+    packages,
+    sizes,
+    matrix,
+    specs: specs ?? [],
+    sections: sections ?? [],
   } as const;
 }
 
@@ -91,7 +220,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
     return <div className="p-6">Landing page not found.</div>;
   }
 
-  const { product, startingPrice, colorPrices, colorAvailability, colorVariantId } = data;
+  const { product, mediaItems, colors, models, packages, sizes, matrix, specs, sections } = data;
 
   return (
     <div className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-10 items-start">
@@ -100,90 +229,138 @@ export default async function LandingPage({ params }: { params: { slug: string }
       <div className="space-y-8">
         <header className="space-y-2">
           <h1 className="text-3xl font-semibold">{product.name}</h1>
-          <p className="text-gray-600">Official Google Find My Device compatible tracker.</p>
         </header>
 
         {/* Media Gallery */}
         <section>
-          {(() => {
-            const media: MediaItem[] = [
-              { type: 'video', src: '/images/Android%20Version.mp4', poster: '/images/2c6e7458128b076e82bd99f52ab130c8.avif', alt: 'Product demo video' },
-              { type: 'image', src: '/images/2c6e7458128b076e82bd99f52ab130c8.avif', alt: `${product.name} hero` },
-              { type: 'image', src: '/images/94caacfb5a2c869439a89646703d75bb.avif' },
-              { type: 'image', src: '/images/3c03271147d6f8062d3cdbea740aee99.avif' },
-              { type: 'image', src: '/images/8f2cf7b23a638f499313f6fbf6bd4087.avif' },
-              { type: 'image', src: '/images/8227e60d14e5f9f681bd580a6671b3c5.avif' },
-              { type: 'image', src: '/images/cad05795ed848d2c89cb4b7b53970f4c.avif' },
-              { type: 'image', src: '/images/d3d9555482ccfc3130698b9400c07518.avif' },
-              { type: 'image', src: '/images/ab848a78a9c626e6cb937806b8c8fbfd.avif' },
-            ];
-            return <ImageGallery items={media} />;
-          })()}
+          {mediaItems.length > 0 ? (
+            <ImageGallery items={mediaItems} />
+          ) : (
+            <div className="aspect-[1/1] w-full grid place-items-center border rounded text-sm text-gray-500">No media yet</div>
+          )}
         </section>
 
-        <section>
-          <h2 className="text-xl font-medium mb-2">Highlights</h2>
-          <ul className="list-disc pl-6 text-sm text-gray-700 space-y-1">
-            <li>Real-time tracking with Google Find My Device</li>
-            <li>IP68 waterproof, ultra-slim design</li>
-            <li>1-year battery life with replaceable coin cell</li>
-            <li>Loud buzzer for quick finding</li>
-            <li>Two-way finding to locate phone or tag</li>
-          </ul>
-        </section>
-
-        {/* Bilingual Description */}
+        {(specs && specs.length > 0) && (() => {
+          const highlightsEn = (specs as any[]).filter(r => r.group === 'Highlights' && r.lang === 'en').map(r => r.label).filter(Boolean);
+          const highlightsUr = (specs as any[]).filter(r => r.group === 'Highlights' && r.lang === 'ur').map(r => r.label).filter(Boolean);
+          if (highlightsEn.length === 0 && highlightsUr.length === 0) return null;
+          return (
+            <section className="space-y-4">
+              {highlightsEn.length > 0 && (
+                <div>
+                  <h2 className="text-xl font-medium mb-2">Highlights</h2>
+                  <ul className="list-disc pl-6 text-sm text-gray-700 space-y-1">
+                    {highlightsEn.map((h, i) => (<li key={i}>{h}</li>))}
+                  </ul>
+                </div>
+              )}
+              {highlightsUr.length > 0 && (
+                <div dir="rtl" className="font-urdu">
+                  <h2 className="text-xl font-medium mb-2">اہم خصوصیات</h2>
+                  <ul className="list-disc pl-6 text-sm text-gray-700 space-y-1">
+                    {highlightsUr.map((h, i) => (<li key={i}>{h}</li>))}
+                  </ul>
+                </div>
+              )}
+            </section>
+          );
+        })()}
+        
+        {/* Bilingual Description (DB-backed, optional) */}
         <section className="space-y-6">
-          <div className="prose max-w-none">
-            <p>Never lose what matters again — the 2025 Android Tag keeps your world safe.</p>
-            <p>Attach it to keys, bags, wallets, or even pets, and track them instantly.</p>
-            <p>Open the Google Find My Device app to see live location anytime, anywhere.</p>
-            <p>Nearby? Make the Tag ring loudly and follow the sound straight to your item.</p>
-            <p>Far away? The global Android network helps you locate it securely on the map.</p>
-            <p>Get separation alerts so you’ll never leave your essentials behind.</p>
-            <p>With long-lasting replaceable battery, it protects you for months without charging.</p>
-            <p>Designed with water and dust resistance (IP67) — ready for rain, travel, and daily life.</p>
-            <p>Compact, durable, and stylish enough to carry anywhere with confidence.</p>
-            <p><strong>Android Tag — precision, protection, and peace of mind in your pocket.</strong></p>
-          </div>
-
-          <div className="prose max-w-none font-urdu" dir="rtl">
-            <p>اب قیمتی چیزوں کا کھو جانا قصۂ ماضی! نیا 2025 Android Tag آپ کے لئے سکون کی ضمانت۔</p>
-            <p>چابیاں، بیگ، بٹوا یا پالتو — سب پر لگائیں اور لمحوں میں ڈھونڈ نکالیں۔</p>
-            <p>بس Google Find My Device ایپ کھولیں اور نقشے پر جگہ فوراً دیکھیں۔</p>
-            <p>قریب ہوں تو Tag بجائیں اور آواز کے ساتھ سیدھا پہنچ جائیں۔</p>
-            <p>اگر دور کھو جائے تو Android نیٹ ورک آپ کو نقشے پر راستہ دکھائے۔</p>
-            <p>Separation Alerts آپ کو وقت پر خبردار کریں تاکہ کچھ پیچھے نہ رہ جائے۔</p>
-            <p>لمبی عمر والی replaceable battery مہینوں تک حفاظت فراہم کرے۔</p>
-            <p>IP67 پانی اور دھول سے محفوظ ڈیزائن سفر اور روزمرہ زندگی کے لئے بہترین۔</p>
-            <p>چھوٹا، مضبوط اور دلکش ڈیزائن — ہر جگہ ساتھ رکھنے کے قابل۔</p>
-            <p><strong>Android Tag — حفاظت، سہولت اور اطمینان آپ کی جیب میں۔</strong></p>
-          </div>
+          {product.description_en && (
+            <div>
+              <h2 className="text-lg font-medium mb-2">Description (English)</h2>
+              {renderDescriptionBlock(product.description_en as any, 'en')}
+            </div>
+          )}
+          {product.description_ur && (
+            <div dir="rtl" className="font-urdu">
+              <h2 className="text-lg font-medium mb-2">تفصیل (اردو)</h2>
+              {renderDescriptionBlock(product.description_ur as any, 'ur')}
+            </div>
+          )}
         </section>
 
-        <section>
-          <h2 className="text-xl font-medium mb-2">Specifications</h2>
-          <table className="w-full text-sm text-gray-700">
-            <tbody>
-              <tr className="border-b"><td className="py-2 pr-4 font-medium">Type</td><td className="py-2">Bluetooth tracker</td></tr>
-              <tr className="border-b"><td className="py-2 pr-4 font-medium">Bluetooth</td><td className="py-2">BLE</td></tr>
-              <tr className="border-b"><td className="py-2 pr-4 font-medium">Battery</td><td className="py-2">CR2032 coin cell (replaceable)</td></tr>
-              <tr className="border-b"><td className="py-2 pr-4 font-medium">Waterproof</td><td className="py-2">IP68</td></tr>
-              <tr className="border-b"><td className="py-2 pr-4 font-medium">Compatibility</td><td className="py-2">Android (Google Find My Device)</td></tr>
-              <tr className="border-b"><td className="py-2 pr-4 font-medium">Features</td><td className="py-2">Real-time tracking, loud buzzer, two-way finding</td></tr>
-            </tbody>
-          </table>
-        </section>
+        {/* Specifications (dynamic) */}
+        {specs && specs.length > 0 && (
+          <section className="space-y-6">
+            <h2 className="text-xl font-medium">Specifications</h2>
+            {(['en','ur'] as const).map((lng) => {
+              const groups = new Map<string, { label: string; value: string }[]>();
+              for (const row of specs as any[]) {
+                if (row.lang !== lng) continue;
+                const g = row.group || 'Specs';
+                if (!groups.has(g)) groups.set(g, []);
+                groups.get(g)!.push({ label: row.label, value: row.value });
+              }
+              if (groups.size === 0) return null;
+              return (
+                <div key={lng} dir={lng === 'ur' ? 'rtl' : undefined} className={lng === 'ur' ? 'font-urdu' : ''}>
+                  {Array.from(groups.entries()).map(([g, rows]: [string, { label: string; value: string }[]]) => (
+                    <div key={g} className="mb-4">
+                      <h3 className="font-medium mb-2">{g}</h3>
+                      <table className="w-full text-sm text-gray-700 table-fixed border-t">
+                        <tbody>
+                          {rows.map((r: { label: string; value: string }, i: number) => (
+                            <tr key={i} className={`border-b ${i % 2 === 1 ? 'bg-gray-50' : ''}`}>
+                              <td className="py-2 pr-4 font-medium whitespace-nowrap align-top w-1/3">{r.label}</td>
+                              <td className="py-2 align-top w-2/3 break-words">{renderSpecValue(r.value)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </section>
+        )}
+
+        {/* Bottom sections */}
+        {sections && sections.length > 0 && (
+          <section className="space-y-10">
+            {sections.map((s: any, idx: number) => (
+              <div key={idx}>
+                {s.title && <h2 className="text-xl font-medium mb-2">{s.title}</h2>}
+                {s.type === 'rich_text' && (
+                  <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: s.body || '' }} />
+                )}
+                {s.type === 'image' && Array.isArray(s.media_refs) && s.media_refs.length > 0 && (
+                  <div className="relative w-full">
+                    <Image src={s.media_refs[0]} alt={s.title || 'Section image'} width={1200} height={800} className="w-full h-auto" />
+                  </div>
+                )}
+                {s.type === 'gallery' && Array.isArray(s.media_refs) && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {s.media_refs.map((u: string, i: number) => (
+                      <div key={i} className="relative w-full aspect-[1/1] border rounded overflow-hidden">
+                        <Image src={u} alt={s.title || `Image ${i+1}`} fill className="object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {s.type === 'video' && Array.isArray(s.media_refs) && s.media_refs.length > 0 && (
+                  <video controls className="w-full h-auto">
+                    <source src={s.media_refs[0]} />
+                  </video>
+                )}
+              </div>
+            ))}
+          </section>
+        )}
       </div>
 
       {/* Right: Sticky Buy panel */}
       <aside>
         <div className="lg:sticky lg:top-6">
           <BuyPanel
-            startingPrice={startingPrice}
-            colorPrices={colorPrices}
-            colorAvailability={colorAvailability}
-            colorVariantId={colorVariantId}
+            colors={colors}
+            models={models}
+            packages={packages}
+            sizes={sizes}
+            matrix={matrix}
           />
         </div>
       </aside>
@@ -195,11 +372,12 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   const supabase = getSupabaseServerClient();
   const { data: product } = await supabase
     .from('products')
-    .select('name, description')
+    .select('name, description_en, active')
     .eq('slug', params.slug)
+    .eq('active', true)
     .maybeSingle();
   const title = product?.name ? `${product.name} – Afal Store` : 'Afal Store';
-  const description = product?.description || 'Premium Android Tag compatible with Google Find My Device. Waterproof, long battery, compact.';
+  const description = (product as any)?.description_en || 'Premium Android Tag compatible with Google Find My Device. Waterproof, long battery, compact.';
   const ogImage = '/images/2c6e7458128b076e82bd99f52ab130c8.avif';
   return {
     title,

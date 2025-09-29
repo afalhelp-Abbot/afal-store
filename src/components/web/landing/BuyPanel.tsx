@@ -4,24 +4,39 @@ import React from 'react';
 import OrderDrawer from './OrderDrawer';
 
 type BuyPanelProps = {
-  startingPrice: number | null;
-  colorPrices: Record<string, number>;
-  colorAvailability: Record<string, number>;
-  colorVariantId: Record<string, string>;
+  colors: string[];
+  models: string[];
+  packages: string[];
+  sizes: string[];
+  // key is `${color}|${model}|${pack}` with empty string for missing dimension
+  matrix: Record<string, { price: number; availability: number; variantId: string } >;
 };
 
-export default function BuyPanel({ startingPrice, colorPrices, colorAvailability, colorVariantId }: BuyPanelProps) {
-  const colors = React.useMemo(() => Object.keys(colorPrices).sort(), [colorPrices]);
+export default function BuyPanel({ colors, models, packages, sizes, matrix }: BuyPanelProps) {
   const [selectedColor, setSelectedColor] = React.useState<string>(colors[0] || '');
+  const [selectedModel, setSelectedModel] = React.useState<string>(models[0] || '');
+  const [selectedPackage, setSelectedPackage] = React.useState<string>(packages[0] || '');
+  const [selectedSize, setSelectedSize] = React.useState<string>(sizes[0] || '');
   const [drawerOpen, setDrawerOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (!selectedColor && colors.length) setSelectedColor(colors[0]);
   }, [colors, selectedColor]);
+  React.useEffect(() => {
+    if (!selectedModel && models.length) setSelectedModel(models[0]);
+  }, [models, selectedModel]);
+  React.useEffect(() => {
+    if (!selectedPackage && packages.length) setSelectedPackage(packages[0]);
+  }, [packages, selectedPackage]);
+  React.useEffect(() => {
+    if (!selectedSize && sizes.length) setSelectedSize(sizes[0]);
+  }, [sizes, selectedSize]);
 
-  const price = selectedColor ? colorPrices[selectedColor] ?? startingPrice : startingPrice;
-  const avail = selectedColor ? colorAvailability[selectedColor] : undefined;
-  const variantId = selectedColor ? colorVariantId[selectedColor] ?? null : null;
+  const key = `${selectedColor || ''}|${models.length ? selectedModel : ''}|${packages.length ? selectedPackage : ''}|${sizes.length ? selectedSize : ''}`;
+  const entry = matrix[key];
+  const price = entry?.price ?? null;
+  const avail = entry?.availability;
+  const variantId = entry?.variantId ?? null;
   const lowStock = typeof avail === 'number' && avail > 0 && avail <= 5;
 
   return (
@@ -36,7 +51,10 @@ export default function BuyPanel({ startingPrice, colorPrices, colorAvailability
         <div className="flex flex-wrap gap-2">
           {colors.map((c) => {
             const active = selectedColor === c;
-            const a = colorAvailability[c] ?? 0;
+            // compute availability across model/package for this color (sum of valid combos)
+            const a = Object.entries(matrix)
+              .filter(([k]) => k.startsWith(`${c}|`))
+              .reduce((acc, [, v]) => acc + (v?.availability ?? 0), 0);
             const disabled = a <= 0;
             return (
               <button
@@ -55,6 +73,93 @@ export default function BuyPanel({ startingPrice, colorPrices, colorAvailability
           })}
         </div>
       </div>
+
+      {/* Model selector: chips when <=3, dropdown otherwise. Hidden if <=1 option. */}
+      {models.length > 1 && (
+        <div>
+          <div className="text-sm text-gray-600 mb-2">Model</div>
+          {models.length <= 3 ? (
+            <div className="flex flex-wrap gap-2">
+              {models.map((m) => {
+                const active = selectedModel === m;
+                // compute availability for this model in current color/package/size context
+                const k = `${selectedColor || ''}|${m}|${packages.length ? selectedPackage : ''}|${sizes.length ? selectedSize : ''}`;
+                const a = matrix[k]?.availability ?? 0;
+                const disabled = a <= 0;
+                return (
+                  <button
+                    key={m}
+                    onClick={() => setSelectedModel(m)}
+                    disabled={disabled}
+                    className={`px-3 py-2 rounded-full border text-sm ${active ? 'bg-black text-white' : 'bg-white'} ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+                    title={disabled ? 'Out of stock' : `${a} available`}
+                  >
+                    {m}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <select value={selectedModel} onChange={(e)=>setSelectedModel(e.target.value)} className="border rounded px-3 py-2">
+              {models.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
+      {/* Package selector: hidden if <=1 option. */}
+      {packages.length > 1 && (
+        <div>
+          <div className="text-sm text-gray-600 mb-2">Package</div>
+          <div className="flex flex-wrap gap-2">
+            {packages.map((p) => {
+              const active = selectedPackage === p;
+              const k = `${selectedColor || ''}|${models.length ? selectedModel : ''}|${p}|${sizes.length ? selectedSize : ''}`;
+              const a = matrix[k]?.availability ?? 0;
+              const disabled = a <= 0;
+              return (
+                <button
+                  key={p}
+                  onClick={() => setSelectedPackage(p)}
+                  disabled={disabled}
+                  className={`px-3 py-2 rounded-full border text-sm ${active ? 'bg-black text-white' : 'bg-white'} ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+                  title={disabled ? 'Out of stock' : `${a} available`}
+                >
+                  {p}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Size selector: hidden if <=1 option. */}
+      {sizes.length > 1 && (
+        <div>
+          <div className="text-sm text-gray-600 mb-2">Size</div>
+          <div className="flex flex-wrap gap-2">
+            {sizes.map((s) => {
+              const active = selectedSize === s;
+              const k = `${selectedColor || ''}|${models.length ? selectedModel : ''}|${packages.length ? selectedPackage : ''}|${s}`;
+              const a = matrix[k]?.availability ?? 0;
+              const disabled = a <= 0;
+              return (
+                <button
+                  key={s}
+                  onClick={() => setSelectedSize(s)}
+                  disabled={disabled}
+                  className={`px-3 py-2 rounded-full border text-sm ${active ? 'bg-black text-white' : 'bg-white'} ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+                  title={disabled ? 'Out of stock' : `${a} available`}
+                >
+                  {s}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="text-sm text-gray-600 flex items-center gap-2">
         {avail == null ? '' : (
