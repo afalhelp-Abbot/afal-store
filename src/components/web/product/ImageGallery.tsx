@@ -91,7 +91,7 @@ export default function ImageGallery({ items, className }: Props) {
       <div className="order-1 md:order-2">
         <div
           ref={mainRef}
-          className="relative w-full aspect-[1/1] md:aspect-[1/1] bg-white rounded overflow-hidden group shadow-sm"
+          className="relative w-full md:w-[75%] mx-auto aspect-[1/1] md:aspect-[1/1] bg-white rounded overflow-hidden group shadow-sm"
           onMouseEnter={() => setIsZoom(true)}
           onMouseLeave={() => setIsZoom(false)}
           onMouseMove={(e) => {
