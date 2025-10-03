@@ -12,6 +12,7 @@ type VariantRow = {
   id: string;
   sku: string;
   price: number;
+  product_id?: string;
   color?: string;
   size?: string;
   model?: string;
@@ -38,8 +39,34 @@ function CheckoutInner() {
   const [success, setSuccess] = useState<{ order_id: string } | null>(null);
   const [lines, setLines] = useState<Array<CartItem>>([]);
   const [variants, setVariants] = useState<Record<string, VariantRow>>({});
+  const [thumbByProduct, setThumbByProduct] = useState<Record<string, string>>({});
 
   const formRef = useRef<HTMLFormElement>(null);
+
+  // Helper: sync lines to URL
+  const replaceUrlWithLines = (newLines: CartItem[]) => {
+    const itemsParam = encodeURIComponent(JSON.stringify(newLines));
+    const qs = `?items=${itemsParam}`;
+    router.replace(`/checkout${qs}`);
+  };
+
+  // Handlers for qty and remove
+  const setQtyAt = (idx: number, qty: number) => {
+    setLines((prev) => {
+      const next = prev.map((ln, i) => (i === idx ? { ...ln, qty: Math.max(0, Math.floor(qty || 0)) } : ln)).filter((ln) => ln.qty > 0);
+      replaceUrlWithLines(next);
+      return next;
+    });
+  };
+  const incQty = (idx: number) => setQtyAt(idx, (lines[idx]?.qty || 0) + 1);
+  const decQty = (idx: number) => setQtyAt(idx, (lines[idx]?.qty || 0) - 1);
+  const removeLine = (idx: number) => {
+    setLines((prev) => {
+      const next = prev.filter((_, i) => i !== idx);
+      replaceUrlWithLines(next);
+      return next;
+    });
+  };
 
   // Parse items from URL and fetch variant info
   useEffect(() => {
@@ -50,14 +77,6 @@ function CheckoutInner() {
           setLoading(false);
           return;
         }
-
-export default function CheckoutPage() {
-  return (
-    <Suspense fallback={<div className="max-w-5xl mx-auto p-6">Loading checkout…</div>}>
-      <CheckoutInner />
-    </Suspense>
-  );
-}
         const parsed: CartItem[] = JSON.parse(decodeURIComponent(itemsParam));
         const normalized = parsed.filter((x) => x && x.variant_id && (x.qty || 0) > 0);
         setLines(normalized);
@@ -69,7 +88,7 @@ export default function CheckoutPage() {
         // Fetch variants
         const { data: vrows, error: vErr } = await supabaseBrowser
           .from("variants")
-          .select("id, sku, price, active")
+          .select("id, sku, price, active, product_id")
           .in("id", ids)
           .eq("active", true);
         if (vErr) throw vErr;
@@ -79,7 +98,27 @@ export default function CheckoutPage() {
             id: (r as any).id,
             sku: (r as any).sku,
             price: Number((r as any).price) || 0,
+            product_id: (r as any).product_id,
           };
+        }
+        // Fetch thumbnails per product
+        const productIds = Array.from(new Set((vrows || []).map((r: any) => r.product_id).filter(Boolean)));
+        if (productIds.length) {
+          const { data: mediaRows } = await supabaseBrowser
+            .from("product_media")
+            .select("product_id, url, thumb_url, type, sort")
+            .in("product_id", productIds)
+            .order("sort", { ascending: true });
+          const map: Record<string, string> = {};
+          for (const m of mediaRows || []) {
+            const pid = (m as any).product_id as string;
+            if (!map[pid]) {
+              if ((m as any).type === 'image') {
+                map[pid] = (m as any).thumb_url || (m as any).url;
+              }
+            }
+          }
+          setThumbByProduct(map);
         }
         // Fetch option labels via join
         const { data: links } = await supabaseBrowser
@@ -128,6 +167,37 @@ export default function CheckoutPage() {
     try {
       setPlacing(true);
       setError(null);
+      // Validate availability first
+      const ids = lines.map((x) => x.variant_id);
+      if (ids.length) {
+        const { data: inv } = await supabaseBrowser
+          .from('inventory')
+          .select('variant_id, stock_on_hand, reserved')
+          .in('variant_id', ids);
+        const avail: Record<string, number> = {};
+        for (const r of inv || []) {
+          const id = (r as any).variant_id as string;
+          const on = Number((r as any).stock_on_hand) || 0;
+          const res = Number((r as any).reserved) || 0;
+          avail[id] = on - res;
+        }
+        const over: Array<{ sku: string; need: number; have: number }> = [];
+        for (const ln of lines) {
+          const have = avail[ln.variant_id] ?? 0;
+          if (ln.qty > have) {
+            const sku = variants[ln.variant_id]?.sku || ln.variant_id;
+            over.push({ sku, need: ln.qty, have });
+          }
+        }
+        if (over.length) {
+          setError(
+            'Insufficient stock for: ' +
+            over.map((o) => `${o.sku} (need ${o.need}, have ${o.have})`).join(', ')
+          );
+          setPlacing(false);
+          return;
+        }
+      }
       const fd = new FormData(formRef.current);
       const payload = {
         customer: {
@@ -175,6 +245,7 @@ export default function CheckoutPage() {
                 <th className="text-right p-3">Unit Price</th>
                 <th className="text-right p-3">Qty</th>
                 <th className="text-right p-3">Line Total</th>
+                <th className="p-3"></th>
               </tr>
             </thead>
             <tbody>
@@ -184,11 +255,36 @@ export default function CheckoutPage() {
                 const lineTotal = (v?.price || 0) * ln.qty;
                 return (
                   <tr key={i} className="border-b last:border-0">
-                    <td className="p-3 font-medium whitespace-nowrap">{v?.sku || ln.variant_id.slice(0, 8)}</td>
+                    <td className="p-3 font-medium whitespace-nowrap">
+                      <div className="flex items-center gap-3">
+                        {v?.product_id && (thumbByProduct[v.product_id] ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={thumbByProduct[v.product_id]} alt={v?.sku || 'Product'} className="w-10 h-10 object-cover rounded border" />
+                        ) : (
+                          <div className="w-10 h-10 rounded border bg-gray-100" />
+                        ))}
+                        <span>{v?.sku || ln.variant_id.slice(0, 8)}</span>
+                      </div>
+                    </td>
                     <td className="p-3 text-gray-600">{variantText}</td>
                     <td className="p-3 text-right">PKR {Number(v?.price || 0).toLocaleString()}</td>
-                    <td className="p-3 text-right">{ln.qty}</td>
+                    <td className="p-3">
+                      <div className="flex items-center justify-end gap-2">
+                        <button type="button" onClick={() => decQty(i)} className="border rounded px-2 py-1">-</button>
+                        <input
+                          type="number"
+                          min={1}
+                          value={ln.qty}
+                          onChange={(e)=>setQtyAt(i, Number(e.target.value))}
+                          className="w-14 text-right border rounded px-2 py-1"
+                        />
+                        <button type="button" onClick={() => incQty(i)} className="border rounded px-2 py-1">+</button>
+                      </div>
+                    </td>
                     <td className="p-3 text-right">PKR {Number(lineTotal).toLocaleString()}</td>
+                    <td className="p-3 text-right">
+                      <button type="button" onClick={() => removeLine(i)} className="text-red-600 hover:underline">Remove</button>
+                    </td>
                   </tr>
                 );
               })}
@@ -267,5 +363,13 @@ export default function CheckoutPage() {
         </div>
       </aside>
     </div>
+  );
+}
+
+export default function CheckoutPage() {
+  return (
+    <Suspense fallback={<div className="max-w-5xl mx-auto p-6">Loading checkout…</div>}>
+      <CheckoutInner />
+    </Suspense>
   );
 }
