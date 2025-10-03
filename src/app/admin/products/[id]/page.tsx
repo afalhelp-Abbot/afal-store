@@ -591,6 +591,106 @@ export default function EditProductPage() {
   const [variants, setVariants] = useState<VariantRow[]>([]);
   // Admin local toggle to allow changing structural fields if needed
   const [unlockVariantStructure, setUnlockVariantStructure] = useState(false);
+  const [lpProbe, setLpProbe] = useState<null | { colors: string[]; keys: string[] }>(null);
+
+  const runLpProbe = async () => {
+    try {
+      // Mimic LP queries for this product
+      const { data: product } = await supabaseBrowser
+        .from('products')
+        .select('id, active')
+        .eq('id', params.id)
+        .eq('active', true)
+        .maybeSingle();
+      if (!product?.id) { setLpProbe({ colors: [], keys: [] }); return; }
+
+      const { data: variants } = await supabaseBrowser
+        .from('variants')
+        .select('id, sku, price, active')
+        .eq('product_id', product.id)
+        .eq('active', true);
+      const ids = (variants || []).map((v:any)=>v.id);
+
+      const { data: inv } = await supabaseBrowser
+        .from('inventory')
+        .select('variant_id, stock_on_hand, reserved')
+        .in('variant_id', ids);
+      const availability: Record<string, number> = {};
+      for (const r of inv || []) {
+        const vId = (r as any).variant_id as string; const on = Number((r as any).stock_on_hand)||0; const res = Number((r as any).reserved)||0; availability[vId] = on - res;
+      }
+
+      const { data: colorType } = await supabaseBrowser.from('option_types').select('id').eq('name','Color').maybeSingle();
+      const { data: modelType } = await supabaseBrowser.from('option_types').select('id').eq('name','Model').maybeSingle();
+      const { data: packType } = await supabaseBrowser.from('option_types').select('id').eq('name','Package').maybeSingle();
+      const { data: sizeType } = await supabaseBrowser.from('option_types').select('id').eq('name','Size').maybeSingle();
+      const colorTypeId = colorType?.id as string|undefined;
+      const modelTypeId = modelType?.id as string|undefined;
+      const packTypeId = packType?.id as string|undefined;
+      const sizeTypeId = sizeType?.id as string|undefined;
+
+      let colorBy: Record<string,string> = {}; let modelBy: Record<string,string> = {}; let packBy: Record<string,string> = {}; let sizeBy: Record<string,string> = {};
+      if (ids.length) {
+        const { data: mapping } = await supabaseBrowser
+          .from('variant_option_values')
+          .select('variant_id, option_values!variant_option_values_option_value_id_fkey(value, option_type_id)')
+          .in('variant_id', ids);
+        for (const row of mapping || []) {
+          const vId = (row as any).variant_id as string; const ov = (row as any).option_values as any; if (!ov) continue;
+          if (colorTypeId && ov.option_type_id === colorTypeId) colorBy[vId] = ov.value as string;
+          if (modelTypeId && ov.option_type_id === modelTypeId) modelBy[vId] = ov.value as string;
+          if (packTypeId && ov.option_type_id === packTypeId) packBy[vId] = ov.value as string;
+          if (sizeTypeId && ov.option_type_id === sizeTypeId) sizeBy[vId] = ov.value as string;
+        }
+      }
+
+      const key = (c?:string,m?:string,p?:string,s?:string)=>`${c||''}|${m||''}|${p||''}|${s||''}`;
+      const colorsSet = new Set<string>(); const keys: string[] = [];
+      for (const v of (variants||[])) {
+        const id = (v as any).id as string; const color = colorBy[id] ?? ((((v as any).sku||'').split('-')[1]) || 'Default'); const m = modelBy[id]; const p = packBy[id]; const s = sizeBy[id];
+        colorsSet.add(color);
+        const k = key(color,m,p,s);
+        keys.push(k + ` avail=${availability[id]??0}`);
+      }
+      setLpProbe({ colors: Array.from(colorsSet).sort(), keys });
+    } catch (e) {
+      setLpProbe({ colors: [], keys: [`error: ${(e as any)?.message || 'unknown'}`] });
+    }
+  };
+
+  // Persist currently shown option selections from the grid to DB, even if locked
+  const resyncOptionLinks = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      for (const v of variants) {
+        const patch: Partial<VariantRow> = {};
+        const colorEl = document.getElementById(`row-color-${v.id}`) as HTMLSelectElement | null;
+        const sizeEl = document.getElementById(`row-size-${v.id}`) as HTMLSelectElement | null;
+        const modelEl = document.getElementById(`row-model-${v.id}`) as HTMLSelectElement | null;
+        const packEl = document.getElementById(`row-pack-${v.id}`) as HTMLSelectElement | null;
+        if (colorEl) patch.color_value_id = colorEl.value ? Number(colorEl.value) : null;
+        if (sizeEl) patch.size_value_id = sizeEl.value ? Number(sizeEl.value) : null;
+        if (modelEl) patch.model_value_id = modelEl.value ? Number(modelEl.value) : null;
+        if (packEl) patch.package_value_id = packEl.value ? Number(packEl.value) : null;
+        // Only call when there is at least one structural field present
+        if (
+          patch.color_value_id !== undefined ||
+          patch.size_value_id !== undefined ||
+          patch.model_value_id !== undefined ||
+          patch.package_value_id !== undefined
+        ) {
+          await updateVariant(v.id, patch);
+        }
+      }
+      await loadVariants();
+      setVariantsDirtyFlag(false);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to resync option links');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const loadVariants = async () => {
     const { data: v } = await supabaseBrowser
@@ -637,7 +737,7 @@ export default function EditProductPage() {
   useEffect(() => {
     loadVariants();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [colorTypeId]);
+  }, [colorTypeId, sizeTypeId, modelTypeId, packageTypeId]);
 
   const addVariant = async (payload: { sku: string; price: number; active: boolean; color_value_id?: number | null; size_value_id?: number | null; model_value_id?: number | null; package_value_id?: number | null }) => {
     const { data: v, error: vErr } = await supabaseBrowser
@@ -685,68 +785,40 @@ export default function EditProductPage() {
       if (error) throw error;
     }
     if (patch.color_value_id != null || patch.size_value_id != null || patch.model_value_id != null || patch.package_value_id != null) {
-      // upsert mapping row for color
+      // Fetch existing links and enforce single row per option type by deleting extras
       const { data: existing, error: exErr } = await supabaseBrowser
         .from('variant_option_values')
         .select('variant_id, option_value_id, option_values!variant_option_values_option_value_id_fkey(option_type_id)')
         .eq('variant_id', id);
       if (exErr) throw exErr;
-      if (patch.color_value_id != null) {
-        const colorLink = (existing || []).find((r: any) => r.option_values?.option_type_id === colorTypeId);
-        if (colorLink) {
-          const { error } = await supabaseBrowser
+
+      const replaceForType = async (typeId?: string, nextId?: number | null) => {
+        if (!typeId) return;
+        const rows = (existing || []).filter((r: any) => r.option_values?.option_type_id === typeId);
+        const keep = nextId == null ? null : nextId;
+        // delete all rows not matching desired value, or all rows if desired is null
+        const toDelete = rows.filter((r: any) => keep == null || r.option_value_id !== keep).map((r: any) => r.option_value_id);
+        if (toDelete.length) {
+          const { error: delErr } = await supabaseBrowser
             .from('variant_option_values')
-            .update({ option_value_id: patch.color_value_id })
+            .delete()
             .eq('variant_id', id)
-            .eq('option_value_id', colorLink.option_value_id);
-          if (error) throw error;
-        } else if (patch.color_value_id) {
-          const { error } = await supabaseBrowser.from('variant_option_values').insert({ variant_id: id, option_value_id: patch.color_value_id });
-          if (error) throw error;
+            .in('option_value_id', toDelete);
+          if (delErr) throw delErr;
         }
-      }
-      if (patch.size_value_id != null) {
-        const sizeLink = (existing || []).find((r: any) => r.option_values?.option_type_id === sizeTypeId);
-        if (sizeLink) {
-          const { error } = await supabaseBrowser
+        // insert if desired exists and there isn't one already
+        if (keep != null && !rows.some((r: any) => r.option_value_id === keep)) {
+          const { error: insErr } = await supabaseBrowser
             .from('variant_option_values')
-            .update({ option_value_id: patch.size_value_id })
-            .eq('variant_id', id)
-            .eq('option_value_id', sizeLink.option_value_id);
-          if (error) throw error;
-        } else if (patch.size_value_id) {
-          const { error } = await supabaseBrowser.from('variant_option_values').insert({ variant_id: id, option_value_id: patch.size_value_id });
-          if (error) throw error;
+            .insert({ variant_id: id, option_value_id: keep });
+          if (insErr) throw insErr;
         }
-      }
-      if (patch.model_value_id != null) {
-        const modelLink = (existing || []).find((r: any) => r.option_values?.option_type_id === modelTypeId);
-        if (modelLink) {
-          const { error } = await supabaseBrowser
-            .from('variant_option_values')
-            .update({ option_value_id: patch.model_value_id })
-            .eq('variant_id', id)
-            .eq('option_value_id', modelLink.option_value_id);
-          if (error) throw error;
-        } else if (patch.model_value_id) {
-          const { error } = await supabaseBrowser.from('variant_option_values').insert({ variant_id: id, option_value_id: patch.model_value_id });
-          if (error) throw error;
-        }
-      }
-      if (patch.package_value_id != null) {
-        const packLink = (existing || []).find((r: any) => r.option_values?.option_type_id === packageTypeId);
-        if (packLink) {
-          const { error } = await supabaseBrowser
-            .from('variant_option_values')
-            .update({ option_value_id: patch.package_value_id })
-            .eq('variant_id', id)
-            .eq('option_value_id', packLink.option_value_id);
-          if (error) throw error;
-        } else if (patch.package_value_id) {
-          const { error } = await supabaseBrowser.from('variant_option_values').insert({ variant_id: id, option_value_id: patch.package_value_id });
-          if (error) throw error;
-        }
-      }
+      };
+
+      await replaceForType(colorTypeId as any, patch.color_value_id as any);
+      await replaceForType(sizeTypeId as any, patch.size_value_id as any);
+      await replaceForType(modelTypeId as any, patch.model_value_id as any);
+      await replaceForType(packageTypeId as any, patch.package_value_id as any);
     }
     setVariants((prev) => prev.map((v) => (v.id === id ? { ...v, ...patch } : v)));
     setVariantsDirtyFlag(true);
@@ -1200,13 +1272,28 @@ export default function EditProductPage() {
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-2 gap-3">
               <h3 className="font-medium">Variants</h3>
-              <label className="text-xs inline-flex items-center gap-2 select-none">
-                <input type="checkbox" checked={unlockVariantStructure} onChange={(e)=>setUnlockVariantStructure(e.target.checked)} />
-                <span className="inline-flex items-center gap-1">Unlock variant structure <span className="text-gray-500">(SKU & options)</span> <HelpTip>Keep this OFF to avoid accidental changes to SKU or option links. Turn ON only if you must fix a mistake; changes save inline.</HelpTip></span>
-              </label>
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={resyncOptionLinks} disabled={saving} className={`text-xs px-3 py-1.5 rounded border ${saving ? 'opacity-60' : 'hover:bg-gray-50'}`} title="Write the current option selections to the database for all variants">
+                  Resync option links
+                </button>
+                <button type="button" onClick={runLpProbe} className="text-xs px-3 py-1.5 rounded border hover:bg-gray-50" title="Run LP probe to see colors and keys the landing page would build">
+                  Debug: LP view
+                </button>
+                <label className="text-xs inline-flex items-center gap-2 select-none">
+                  <input type="checkbox" checked={unlockVariantStructure} onChange={(e)=>setUnlockVariantStructure(e.target.checked)} />
+                  <span className="inline-flex items-center gap-1">Unlock variant structure <span className="text-gray-500">(SKU & options)</span> <HelpTip>Keep this OFF to avoid accidental changes to SKU or option links. Turn ON only if you must fix a mistake; changes save inline.</HelpTip></span>
+                </label>
+              </div>
             </div>
+            {lpProbe && (
+              <div className="mb-3 text-xs border rounded p-2 bg-gray-50">
+                <div className="font-medium mb-1">LP probe</div>
+                <div className="mb-1">Colors: {lpProbe.colors.join(', ') || '—'}</div>
+                <div className="max-h-32 overflow-auto whitespace-pre-wrap">Keys:\n{lpProbe.keys.join('\n')}</div>
+              </div>
+            )}
             <div className="overflow-auto">
               <table className="w-full text-sm min-w-[640px]">
                 <thead>
@@ -1236,7 +1323,7 @@ export default function EditProductPage() {
                         />
                       </td>
                       <td className="py-2 pr-3">
-                        <select id={`row-color-${v.id}`} defaultValue={v.color_value_id ?? ''} disabled={!unlockVariantStructure} onChange={(e)=>{ if (!unlockVariantStructure) return; setVariantsDirtyFlag(true); updateVariant(v.id,{ color_value_id: e.target.value ? Number(e.target.value) : null }); }} className={`border rounded px-2 py-1 ${unlockVariantStructure ? '' : 'bg-gray-100 cursor-not-allowed'}`}>
+                        <select id={`row-color-${v.id}`} value={v.color_value_id ?? ''} disabled={!unlockVariantStructure} onChange={(e)=>{ if (!unlockVariantStructure) return; setVariantsDirtyFlag(true); updateVariant(v.id,{ color_value_id: e.target.value ? Number(e.target.value) : null }); }} className={`border rounded px-2 py-1 ${unlockVariantStructure ? '' : 'bg-gray-100 cursor-not-allowed'}`}>
                           <option value="">(none)</option>
                           {colors.map((c) => (
                             <option key={c.id} value={c.id}>{c.value}</option>
@@ -1244,7 +1331,7 @@ export default function EditProductPage() {
                         </select>
                       </td>
                       <td className="py-2 pr-3">
-                        <select id={`row-size-${v.id}`} defaultValue={v.size_value_id ?? ''} disabled={!unlockVariantStructure} onChange={(e)=>{ if (!unlockVariantStructure) return; setVariantsDirtyFlag(true); updateVariant(v.id,{ size_value_id: e.target.value ? Number(e.target.value) : null }); }} className={`border rounded px-2 py-1 ${unlockVariantStructure ? '' : 'bg-gray-100 cursor-not-allowed'}`}>
+                        <select id={`row-size-${v.id}`} value={v.size_value_id ?? ''} disabled={!unlockVariantStructure} onChange={(e)=>{ if (!unlockVariantStructure) return; setVariantsDirtyFlag(true); updateVariant(v.id,{ size_value_id: e.target.value ? Number(e.target.value) : null }); }} className={`border rounded px-2 py-1 ${unlockVariantStructure ? '' : 'bg-gray-100 cursor-not-allowed'}`}>
                           <option value="">(none)</option>
                           {sizes.map((s) => (
                             <option key={s.id} value={s.id}>{s.value}</option>
@@ -1252,7 +1339,7 @@ export default function EditProductPage() {
                         </select>
                       </td>
                       <td className="py-2 pr-3">
-                        <select id={`row-model-${v.id}`} defaultValue={v.model_value_id ?? ''} disabled={!unlockVariantStructure} onChange={(e)=>{ if (!unlockVariantStructure) return; setVariantsDirtyFlag(true); updateVariant(v.id,{ model_value_id: e.target.value ? Number(e.target.value) : null }); }} className={`border rounded px-2 py-1 ${unlockVariantStructure ? '' : 'bg-gray-100 cursor-not-allowed'}`}>
+                        <select id={`row-model-${v.id}`} value={v.model_value_id ?? ''} disabled={!unlockVariantStructure} onChange={(e)=>{ if (!unlockVariantStructure) return; setVariantsDirtyFlag(true); updateVariant(v.id,{ model_value_id: e.target.value ? Number(e.target.value) : null }); }} className={`border rounded px-2 py-1 ${unlockVariantStructure ? '' : 'bg-gray-100 cursor-not-allowed'}`}>
                           <option value="">(none)</option>
                           {models.map((m) => (
                             <option key={m.id} value={m.id}>{m.value}</option>
@@ -1260,7 +1347,7 @@ export default function EditProductPage() {
                         </select>
                       </td>
                       <td className="py-2 pr-3">
-                        <select id={`row-pack-${v.id}`} defaultValue={v.package_value_id ?? ''} disabled={!unlockVariantStructure} onChange={(e)=>{ if (!unlockVariantStructure) return; setVariantsDirtyFlag(true); updateVariant(v.id,{ package_value_id: e.target.value ? Number(e.target.value) : null }); }} className={`border rounded px-2 py-1 ${unlockVariantStructure ? '' : 'bg-gray-100 cursor-not-allowed'}`}>
+                        <select id={`row-pack-${v.id}`} value={v.package_value_id ?? ''} disabled={!unlockVariantStructure} onChange={(e)=>{ if (!unlockVariantStructure) return; setVariantsDirtyFlag(true); updateVariant(v.id,{ package_value_id: e.target.value ? Number(e.target.value) : null }); }} className={`border rounded px-2 py-1 ${unlockVariantStructure ? '' : 'bg-gray-100 cursor-not-allowed'}`}>
                           <option value="">(none)</option>
                           {packages.map((p) => (
                             <option key={p.id} value={p.id}>{p.value}</option>

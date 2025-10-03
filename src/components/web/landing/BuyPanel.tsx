@@ -18,6 +18,8 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix }: Bu
   const [selectedPackage, setSelectedPackage] = React.useState<string>(packages[0] || '');
   const [selectedSize, setSelectedSize] = React.useState<string>(sizes[0] || '');
   const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const panelRef = React.useRef<HTMLDivElement | null>(null);
+  const [showFloatCTA, setShowFloatCTA] = React.useState(false);
 
   React.useEffect(() => {
     if (!selectedColor && colors.length) setSelectedColor(colors[0]);
@@ -39,8 +41,43 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix }: Bu
   const variantId = entry?.variantId ?? null;
   const lowStock = typeof avail === 'number' && avail > 0 && avail <= 5;
 
+  // Determine if any combinations under current selection are available (for enabling the drawer)
+  const anyAvailForSelection = React.useMemo(() => {
+    const m = matrix;
+    // constrain by selected color; optional by model/package/size depending on list lengths
+    const selectedModelKey = models.length ? selectedModel : '';
+    const selectedPackageKey = packages.length ? selectedPackage : '';
+    const selectedSizeKey = sizes.length ? selectedSize : '';
+    // If any dimension has more than 1 option, allow drawer even if current single key is out of stock
+    let total = 0;
+    for (const [k, v] of Object.entries(m)) {
+      const [c, mKey, pKey, sKey] = k.split('|');
+      if ((c || '') !== (selectedColor || '')) continue;
+      if (models.length && mKey !== selectedModelKey) continue;
+      if (packages.length && pKey !== selectedPackageKey) continue;
+      if (sizes.length && sKey !== selectedSizeKey) continue;
+      total += v?.availability ?? 0;
+    }
+    return total > 0;
+  }, [matrix, selectedColor, selectedModel, selectedPackage, selectedSize, models.length, packages.length, sizes.length]);
+
+  // Re-appearing CTA: if the panel scrolls out of view, show a floating Start Order button
+  React.useEffect(() => {
+    if (!panelRef.current) return;
+    const el = panelRef.current;
+    const io = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        setShowFloatCTA(!entry.isIntersecting);
+      },
+      { root: null, rootMargin: '0px', threshold: 0 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [panelRef.current]);
+
   return (
-    <div className="border rounded p-4 space-y-4 shadow-sm">
+    <div ref={panelRef} className="border rounded p-4 space-y-4 shadow-sm">
       <div>
         <div className="text-sm text-gray-600">Price</div>
         <div className="text-2xl font-semibold">{price != null ? `PKR ${Number(price).toLocaleString()}` : '—'}</div>
@@ -177,8 +214,8 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix }: Bu
       <div className="flex items-center gap-3">
         <button
           onClick={() => setDrawerOpen(true)}
-          disabled={!variantId || (typeof avail === 'number' && avail <= 0)}
-          className={`rounded px-4 py-2 text-white ${(!variantId || (typeof avail === 'number' && avail <= 0)) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
+          disabled={!anyAvailForSelection}
+          className={`rounded px-4 py-2 text-white ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
         >
           Start Order
         </button>
@@ -195,10 +232,26 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix }: Bu
       <OrderDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        variantId={variantId}
-        color={selectedColor || null}
-        price={price ?? null}
+        colors={colors}
+        models={models}
+        packages={packages}
+        sizes={sizes}
+        matrix={matrix}
+        initialColor={selectedColor || null}
       />
+
+      {/* Floating CTA when panel is out of view */}
+      {showFloatCTA && (
+        <div className="fixed bottom-4 right-4 z-40">
+          <button
+            onClick={() => setDrawerOpen(true)}
+            disabled={!anyAvailForSelection}
+            className={`shadow-lg rounded-full px-5 py-3 text-white text-sm ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
+          >
+            Start Order
+          </button>
+        </div>
+      )}
     </div>
   );
 }
