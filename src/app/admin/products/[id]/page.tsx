@@ -589,6 +589,8 @@ export default function EditProductPage() {
   // Variants + Inventory helpers
   type VariantRow = { id: string; sku: string; price: number; active: boolean; color_value_id?: number | null; size_value_id?: number | null; model_value_id?: number | null; package_value_id?: number | null; on_hand?: number };
   const [variants, setVariants] = useState<VariantRow[]>([]);
+  // Admin local toggle to allow changing structural fields if needed
+  const [unlockVariantStructure, setUnlockVariantStructure] = useState(false);
 
   const loadVariants = async () => {
     const { data: v } = await supabaseBrowser
@@ -1198,7 +1200,13 @@ export default function EditProductPage() {
           </div>
 
           <div>
-            <h3 className="font-medium mb-2">Variants</h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-medium">Variants</h3>
+              <label className="text-xs inline-flex items-center gap-2 select-none">
+                <input type="checkbox" checked={unlockVariantStructure} onChange={(e)=>setUnlockVariantStructure(e.target.checked)} />
+                <span className="inline-flex items-center gap-1">Unlock variant structure <span className="text-gray-500">(SKU & options)</span> <HelpTip>Keep this OFF to avoid accidental changes to SKU or option links. Turn ON only if you must fix a mistake; changes save inline.</HelpTip></span>
+              </label>
+            </div>
             <div className="overflow-auto">
               <table className="w-full text-sm min-w-[640px]">
                 <thead>
@@ -1218,10 +1226,17 @@ export default function EditProductPage() {
                   {variants.map((v) => (
                     <tr key={v.id} className="border-b last:border-0">
                       <td className="py-2 pr-3">
-                        <input id={`row-sku-${v.id}`} defaultValue={v.sku} onChange={()=>setVariantsDirtyFlag(true)} onBlur={(e)=>updateVariant(v.id,{ sku: e.target.value })} className="border rounded px-2 py-1" />
+                        <input
+                          id={`row-sku-${v.id}`}
+                          defaultValue={v.sku}
+                          readOnly={!unlockVariantStructure}
+                          onChange={()=>unlockVariantStructure && setVariantsDirtyFlag(true)}
+                          onBlur={(e)=> unlockVariantStructure && updateVariant(v.id,{ sku: e.target.value })}
+                          className={`border rounded px-2 py-1 ${unlockVariantStructure ? '' : 'bg-gray-100 cursor-not-allowed'}`}
+                        />
                       </td>
                       <td className="py-2 pr-3">
-                        <select id={`row-color-${v.id}`} defaultValue={v.color_value_id ?? ''} onChange={(e)=>{ setVariantsDirtyFlag(true); updateVariant(v.id,{ color_value_id: e.target.value ? Number(e.target.value) : null }); }} className="border rounded px-2 py-1">
+                        <select id={`row-color-${v.id}`} defaultValue={v.color_value_id ?? ''} disabled={!unlockVariantStructure} onChange={(e)=>{ if (!unlockVariantStructure) return; setVariantsDirtyFlag(true); updateVariant(v.id,{ color_value_id: e.target.value ? Number(e.target.value) : null }); }} className={`border rounded px-2 py-1 ${unlockVariantStructure ? '' : 'bg-gray-100 cursor-not-allowed'}`}>
                           <option value="">(none)</option>
                           {colors.map((c) => (
                             <option key={c.id} value={c.id}>{c.value}</option>
@@ -1229,7 +1244,7 @@ export default function EditProductPage() {
                         </select>
                       </td>
                       <td className="py-2 pr-3">
-                        <select id={`row-size-${v.id}`} defaultValue={v.size_value_id ?? ''} onChange={(e)=>{ setVariantsDirtyFlag(true); updateVariant(v.id,{ size_value_id: e.target.value ? Number(e.target.value) : null }); }} className="border rounded px-2 py-1">
+                        <select id={`row-size-${v.id}`} defaultValue={v.size_value_id ?? ''} disabled={!unlockVariantStructure} onChange={(e)=>{ if (!unlockVariantStructure) return; setVariantsDirtyFlag(true); updateVariant(v.id,{ size_value_id: e.target.value ? Number(e.target.value) : null }); }} className={`border rounded px-2 py-1 ${unlockVariantStructure ? '' : 'bg-gray-100 cursor-not-allowed'}`}>
                           <option value="">(none)</option>
                           {sizes.map((s) => (
                             <option key={s.id} value={s.id}>{s.value}</option>
@@ -1237,7 +1252,7 @@ export default function EditProductPage() {
                         </select>
                       </td>
                       <td className="py-2 pr-3">
-                        <select id={`row-model-${v.id}`} defaultValue={v.model_value_id ?? ''} onChange={(e)=>{ setVariantsDirtyFlag(true); updateVariant(v.id,{ model_value_id: e.target.value ? Number(e.target.value) : null }); }} className="border rounded px-2 py-1">
+                        <select id={`row-model-${v.id}`} defaultValue={v.model_value_id ?? ''} disabled={!unlockVariantStructure} onChange={(e)=>{ if (!unlockVariantStructure) return; setVariantsDirtyFlag(true); updateVariant(v.id,{ model_value_id: e.target.value ? Number(e.target.value) : null }); }} className={`border rounded px-2 py-1 ${unlockVariantStructure ? '' : 'bg-gray-100 cursor-not-allowed'}`}>
                           <option value="">(none)</option>
                           {models.map((m) => (
                             <option key={m.id} value={m.id}>{m.value}</option>
@@ -1245,7 +1260,7 @@ export default function EditProductPage() {
                         </select>
                       </td>
                       <td className="py-2 pr-3">
-                        <select id={`row-pack-${v.id}`} defaultValue={v.package_value_id ?? ''} onChange={(e)=>{ setVariantsDirtyFlag(true); updateVariant(v.id,{ package_value_id: e.target.value ? Number(e.target.value) : null }); }} className="border rounded px-2 py-1">
+                        <select id={`row-pack-${v.id}`} defaultValue={v.package_value_id ?? ''} disabled={!unlockVariantStructure} onChange={(e)=>{ if (!unlockVariantStructure) return; setVariantsDirtyFlag(true); updateVariant(v.id,{ package_value_id: e.target.value ? Number(e.target.value) : null }); }} className={`border rounded px-2 py-1 ${unlockVariantStructure ? '' : 'bg-gray-100 cursor-not-allowed'}`}>
                           <option value="">(none)</option>
                           {packages.map((p) => (
                             <option key={p.id} value={p.id}>{p.value}</option>
