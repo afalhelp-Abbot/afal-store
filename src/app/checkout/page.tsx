@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
@@ -28,7 +28,7 @@ const PK_PROVINCES = [
   { code: "GB", name: "Gilgit-Baltistan" },
 ];
 
-export default function CheckoutPage() {
+function CheckoutInner() {
   const router = useRouter();
   const search = useSearchParams();
   const itemsParam = search.get("items");
@@ -50,6 +50,14 @@ export default function CheckoutPage() {
           setLoading(false);
           return;
         }
+
+export default function CheckoutPage() {
+  return (
+    <Suspense fallback={<div className="max-w-5xl mx-auto p-6">Loading checkout…</div>}>
+      <CheckoutInner />
+    </Suspense>
+  );
+}
         const parsed: CartItem[] = JSON.parse(decodeURIComponent(itemsParam));
         const normalized = parsed.filter((x) => x && x.variant_id && (x.qty || 0) > 0);
         setLines(normalized);
