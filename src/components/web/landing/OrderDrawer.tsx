@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { getUTM } from '@/lib/utm';
+import { useRouter } from 'next/navigation';
 
 type Matrix = Record<string, { price: number; availability: number; variantId: string }>;
 
@@ -17,12 +17,23 @@ type OrderDrawerProps = {
 };
 
 export default function OrderDrawer({ open, onClose, colors, models, packages, sizes, matrix, initialColor }: OrderDrawerProps) {
+  const router = useRouter();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [success, setSuccess] = React.useState<{ order_id: string } | null>(null);
 
   const [color, setColor] = React.useState<string>(initialColor || colors[0] || '');
   const [model, setModel] = React.useState<string>(models[0] || '');
+
+  // Pakistan provinces / territories
+  const provinces = [
+    { code: 'Sindh', name: 'Sindh' },
+    { code: 'Punjab', name: 'Punjab' },
+    { code: 'KPK', name: 'Khyber Pakhtunkhwa' },
+    { code: 'Balochistan', name: 'Balochistan' },
+    { code: 'ICT', name: 'Islamabad Capital Territory' },
+    { code: 'AJK', name: 'Azad Jammu & Kashmir' },
+    { code: 'GB', name: 'Gilgit-Baltistan' },
+  ];
 
   React.useEffect(() => {
     if (!color && colors.length) setColor(colors[0]);
@@ -45,38 +56,16 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
     e.preventDefault();
     setLoading(true);
     setError(null);
-    setSuccess(null);
     try {
-      const fd = new FormData(formRef.current!);
       const items = Object.entries(qtyMap)
         .filter(([, q]) => (q || 0) > 0)
         .map(([k, q]) => ({ variant_id: matrix[k]?.variantId, qty: q }))
         .filter((it) => !!it.variant_id);
       if (items.length === 0) throw new Error('Please enter quantity for at least one option');
-      const payload = {
-        customer: {
-          name: String(fd.get('name') || '').trim(),
-          email: String(fd.get('email') || '').trim() || undefined,
-          phone: String(fd.get('phone') || '').trim(),
-          address: String(fd.get('address') || '').trim(),
-          city: String(fd.get('city') || '').trim(),
-          province_code: String(fd.get('province_code') || '').trim() || undefined,
-        },
-        utm: {
-          source: getUTM().utm_source,
-          medium: getUTM().utm_medium,
-          campaign: getUTM().utm_campaign,
-        },
-        items,
-      };
-      const res = await fetch('/api/orders/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || 'Failed to create order');
-      setSuccess({ order_id: data.order_id });
+      // Pass items to /checkout using query param (URL-encoded JSON)
+      const itemsParam = encodeURIComponent(JSON.stringify(items));
+      router.push(`/checkout?items=${itemsParam}`);
+      onClose();
     } catch (err: any) {
       setError(err?.message || 'Unknown error');
     } finally {
@@ -98,15 +87,7 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
           <button onClick={() => !loading && onClose()} className="text-gray-500 hover:text-gray-700">✕</button>
         </div>
 
-        {success ? (
-          <div className="space-y-4">
-            <div className="border rounded p-4 bg-green-50 text-green-800">
-              Order placed successfully! Your order id is <span className="font-semibold">#{success.order_id}</span>.
-            </div>
-            <button onClick={onClose} className="bg-black text-white rounded px-4 py-2">Close</button>
-          </div>
-        ) : (
-          <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
+        <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
             {/* Choose Color */}
             {colors.length > 0 && (
               <div>
@@ -180,33 +161,7 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
               </div>
             </div>
 
-            {/* Customer info */}
-            <div className="grid grid-cols-1 gap-3">
-              <div>
-                <label className="block text-sm">Name</label>
-                <input name="name" required className="border rounded px-3 py-2 w-full" />
-              </div>
-              <div>
-                <label className="block text-sm">Phone</label>
-                <input name="phone" required className="border rounded px-3 py-2 w-full" />
-              </div>
-              <div>
-                <label className="block text-sm">Email (optional)</label>
-                <input name="email" type="email" className="border rounded px-3 py-2 w-full" />
-              </div>
-              <div>
-                <label className="block text-sm">City</label>
-                <input name="city" required className="border rounded px-3 py-2 w-full" />
-              </div>
-              <div>
-                <label className="block text-sm">Province</label>
-                <input name="province_code" className="border rounded px-3 py-2 w-full" />
-              </div>
-              <div>
-                <label className="block text-sm">Address</label>
-                <input name="address" required className="border rounded px-3 py-2 w-full" />
-              </div>
-            </div>
+            {/* No customer info here. Proceed to checkout to fill address & payment. */}
 
             {error && <div className="text-sm text-red-600">{error}</div>}
 
@@ -216,14 +171,13 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
                 disabled={loading}
                 className={`rounded px-4 py-2 text-white ${loading ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
               >
-                {loading ? 'Placing Order...' : 'Start Order'}
+                {loading ? '...' : 'Proceed to Checkout'}
               </button>
               <button type="button" onClick={onClose} disabled={loading} className="px-4 py-2 rounded border">
                 Cancel
               </button>
             </div>
           </form>
-        )}
       </div>
     </div>
   );

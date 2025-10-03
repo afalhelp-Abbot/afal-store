@@ -20,6 +20,7 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix }: Bu
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const panelRef = React.useRef<HTMLDivElement | null>(null);
   const [showFloatCTA, setShowFloatCTA] = React.useState(false);
+  const [nearBottom, setNearBottom] = React.useState(false);
 
   React.useEffect(() => {
     if (!selectedColor && colors.length) setSelectedColor(colors[0]);
@@ -75,6 +76,20 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix }: Bu
     io.observe(el);
     return () => io.disconnect();
   }, [panelRef.current]);
+
+  // Observe bottom sentinel to avoid overlaying footer
+  React.useEffect(() => {
+    const sentinel = typeof document !== 'undefined' ? document.getElementById('lp-bottom-sentinel') : null;
+    if (!sentinel) return;
+    const io = new IntersectionObserver(
+      (entries) => setNearBottom(entries[0]?.isIntersecting || false),
+      { root: null, rootMargin: '0px', threshold: 0 }
+    );
+    io.observe(sentinel);
+    return () => io.disconnect();
+  }, []);
+
+  // No fade/delay per user request
 
   return (
     <div ref={panelRef} className="border rounded p-4 space-y-4 shadow-sm">
@@ -240,16 +255,47 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix }: Bu
         initialColor={selectedColor || null}
       />
 
-      {/* Floating CTA when panel is out of view */}
-      {showFloatCTA && (
-        <div className="fixed bottom-4 right-4 z-40">
-          <button
-            onClick={() => setDrawerOpen(true)}
-            disabled={!anyAvailForSelection}
-            className={`shadow-lg rounded-full px-5 py-3 text-white text-sm ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
-          >
-            Start Order
-          </button>
+      {/* Floating buy panel that follows scrolling; grows near bottom */}
+      {(showFloatCTA || nearBottom) && !drawerOpen && (
+        <div className={`fixed right-4 z-40 max-w-[95vw] ${nearBottom ? 'bottom-6 w-[483px]' : 'bottom-4 w-[345px]'}`}>
+          <div className="border rounded-lg bg-white shadow-lg p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-600">Price</div>
+              <div className={`${nearBottom ? 'text-2xl' : 'text-xl'} font-semibold`}>{price != null ? `PKR ${Number(price).toLocaleString()}` : '—'}</div>
+            </div>
+            {/* Keep quick selectors for Color and Size if multiple options */}
+            {colors.length > 1 && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-gray-600">Color</span>
+                <div className="flex gap-1 flex-wrap">
+                  {colors.slice(0,4).map((c) => (
+                    <button key={c} onClick={()=>setSelectedColor(c)} disabled={Object.entries(matrix).filter(([k])=>k.startsWith(`${c}|`)).reduce((a,[,v])=>a+(v?.availability||0),0)<=0} className={`px-2 py-1 rounded-full border ${selectedColor===c?'bg-black text-white':'bg-white'} text-xs`}>
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {sizes.length > 1 && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-gray-600">Size</span>
+                <div className="flex gap-1 flex-wrap">
+                  {sizes.slice(0,4).map((s) => (
+                    <button key={s} onClick={()=>setSelectedSize(s)} disabled={(matrix[`${selectedColor||''}|${models.length?selectedModel:''}|${packages.length?selectedPackage:''}|${s}`]?.availability||0)<=0} className={`px-2 py-1 rounded-full border ${selectedSize===s?'bg-black text-white':'bg-white'} text-xs`}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <button
+              onClick={() => setDrawerOpen(true)}
+              disabled={!anyAvailForSelection}
+              className={`w-full rounded ${nearBottom ? 'px-6 py-3.5' : 'px-5 py-2.5'} text-white ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
+            >
+              Start Order
+            </button>
+          </div>
         </div>
       )}
     </div>

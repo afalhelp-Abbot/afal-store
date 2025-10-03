@@ -365,6 +365,8 @@ export default async function LandingPage({ params }: { params: { slug: string }
           />
         </div>
       </aside>
+      {/* Sentinel to hide floating CTA near page end */}
+      <div id="lp-bottom-sentinel" className="h-1"></div>
     </div>
   );
 }
