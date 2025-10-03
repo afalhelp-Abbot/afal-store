@@ -133,6 +133,11 @@ export default function EditProductPage() {
   const [active, setActive] = useState(false);
   const [descriptionEn, setDescriptionEn] = useState('');
   const [descriptionUr, setDescriptionUr] = useState('');
+  // snapshot of loaded basics
+  const [initialBasics, setInitialBasics] = useState<{ name: string; slug: string; active: boolean; descriptionEn: string; descriptionUr: string } | null>(null);
+  // dirty flags for variants and add-variant form
+  const [variantsDirtyFlag, setVariantsDirtyFlag] = useState(false);
+  const [variantFormChangedFlag, setVariantFormChangedFlag] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -152,6 +157,13 @@ export default function EditProductPage() {
         setActive(!!(p as any).active);
         setDescriptionEn((p as any).description_en || '');
         setDescriptionUr((p as any).description_ur || '');
+        setInitialBasics({
+          name: (p as any).name || '',
+          slug: (p as any).slug || '',
+          active: !!(p as any).active,
+          descriptionEn: (p as any).description_en || '',
+          descriptionUr: (p as any).description_ur || '',
+        });
 
         const { data: m, error: mErr } = await supabaseBrowser
           .from('product_media')
@@ -277,8 +289,149 @@ export default function EditProductPage() {
         .eq('id', params.id);
       if (error) throw error;
       router.refresh();
+      // update snapshot after successful save
+      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr });
     } catch (e: any) {
       setError(e?.message || 'Failed to save product');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // dirty detection for Basics
+  const basicsDirty = useMemo(() => {
+    if (!initialBasics) return false;
+    return (
+      initialBasics.name !== name ||
+      initialBasics.slug !== slug ||
+      initialBasics.active !== active ||
+      initialBasics.descriptionEn !== descriptionEn ||
+      initialBasics.descriptionUr !== descriptionUr
+    );
+  }, [initialBasics, name, slug, active, descriptionEn, descriptionUr]);
+
+  // beforeunload guard
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (!basicsDirty) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [basicsDirty]);
+
+  const discardChanges = () => {
+    if (!initialBasics) return;
+    setName(initialBasics.name);
+    setSlug(initialBasics.slug);
+    setActive(initialBasics.active);
+    setDescriptionEn(initialBasics.descriptionEn);
+    setDescriptionUr(initialBasics.descriptionUr);
+    // clear Add Variant form
+    if (typeof document !== 'undefined') {
+      ['v-sku','v-price','v-color','v-size','v-model','v-package'].forEach((id)=>{
+        const el = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
+        if (!el) return;
+        if ('value' in (el as any)) (el as any).value = '';
+      });
+      const av = document.getElementById('v-active') as HTMLInputElement | null;
+      if (av) av.checked = true;
+    }
+    setVariantFormChangedFlag(false);
+    setVariantsDirtyFlag(false);
+  };
+
+  // helper only used when user interacts on client
+  const readVariantForm = () => {
+    if (typeof document === 'undefined') {
+      return { sku: '', price: '', color: '', size: '', model: '', pack: '' };
+    }
+    const sku = (document.getElementById('v-sku') as HTMLInputElement | null)?.value || '';
+    const price = (document.getElementById('v-price') as HTMLInputElement | null)?.value || '';
+    const color = (document.getElementById('v-color') as HTMLSelectElement | null)?.value || '';
+    const size = (document.getElementById('v-size') as HTMLSelectElement | null)?.value || '';
+    const model = (document.getElementById('v-model') as HTMLSelectElement | null)?.value || '';
+    const pack = (document.getElementById('v-package') as HTMLSelectElement | null)?.value || '';
+    return { sku, price, color, size, model, pack };
+  };
+
+  // treat add-variant form as dirty once user types/changes anything
+  const variantFormDirty = useMemo(() => variantFormChangedFlag, [variantFormChangedFlag]);
+
+  // unified dirty state
+  const isDirty = basicsDirty || variantFormDirty || variantsDirtyFlag;
+
+  // Save all edits across Basics, Add Variant, and inline Variant rows
+  const saveAllEdits = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      // 1) Basics
+      const { error: pErr } = await supabaseBrowser
+        .from('products')
+        .update({
+          name,
+          slug,
+          active,
+          description_en: descriptionEn || null,
+          description_ur: descriptionUr || null,
+        })
+        .eq('id', params.id);
+      if (pErr) throw pErr;
+      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr });
+
+      // 2) Add Variant (staged)
+      const vf = readVariantForm();
+      if (vf.sku && vf.price) {
+        await addVariant({
+          sku: vf.sku,
+          price: Number(vf.price),
+          active: (typeof document !== 'undefined' ? (document.getElementById('v-active') as HTMLInputElement | null)?.checked : true) ?? true,
+          color_value_id: vf.color ? Number(vf.color) : null,
+          size_value_id: vf.size ? Number(vf.size) : null,
+          model_value_id: vf.model ? Number(vf.model) : null,
+          package_value_id: vf.pack ? Number(vf.pack) : null,
+        });
+        if (typeof document !== 'undefined') {
+          ['v-sku','v-price','v-color','v-size','v-model','v-package'].forEach((id)=>{
+            const el = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
+            if (el && 'value' in (el as any)) (el as any).value = '';
+          });
+          const av = document.getElementById('v-active') as HTMLInputElement | null; if (av) av.checked = true;
+        }
+        setVariantFormChangedFlag(false);
+      }
+
+      // 3) Persist all visible variant row inputs (in case user didn't blur)
+      for (const v of variants) {
+        if (typeof document === 'undefined') break;
+        const skuEl = document.getElementById(`row-sku-${v.id}`) as HTMLInputElement | null;
+        const priceEl = document.getElementById(`row-price-${v.id}`) as HTMLInputElement | null;
+        const onHandEl = document.getElementById(`row-onhand-${v.id}`) as HTMLInputElement | null;
+        const activeEl = document.getElementById(`row-active-${v.id}`) as HTMLInputElement | null;
+        const colorEl = document.getElementById(`row-color-${v.id}`) as HTMLSelectElement | null;
+        const sizeEl = document.getElementById(`row-size-${v.id}`) as HTMLSelectElement | null;
+        const modelEl = document.getElementById(`row-model-${v.id}`) as HTMLSelectElement | null;
+        const packEl = document.getElementById(`row-pack-${v.id}`) as HTMLSelectElement | null;
+
+        const patch: Partial<VariantRow> = {};
+        if (skuEl && skuEl.value !== v.sku) patch.sku = skuEl.value;
+        if (priceEl && Number(priceEl.value) !== Number(v.price)) patch.price = Number(priceEl.value || '0');
+        if (activeEl && Boolean(activeEl.checked) !== Boolean(v.active)) patch.active = activeEl.checked;
+        if (colorEl) patch.color_value_id = colorEl.value ? Number(colorEl.value) : null;
+        if (sizeEl) patch.size_value_id = sizeEl.value ? Number(sizeEl.value) : null;
+        if (modelEl) patch.model_value_id = modelEl.value ? Number(modelEl.value) : null;
+        if (packEl) patch.package_value_id = packEl.value ? Number(packEl.value) : null;
+        if (Object.keys(patch).length) await updateVariant(v.id, patch);
+        if (onHandEl && Number(onHandEl.value) !== Number(v.on_hand ?? 0)) await setOnHand(v.id, Number(onHandEl.value || '0'));
+      }
+
+      await loadVariants();
+      router.refresh();
+      setVariantsDirtyFlag(false);
+    } catch (e: any) {
+      setError(e?.message || 'Failed to save changes');
     } finally {
       setSaving(false);
     }
@@ -454,10 +607,11 @@ export default function EditProductPage() {
     }
     // attach color/size value ids if exist
     if (ids.length) {
-      const { data: links } = await supabaseBrowser
+      const { data: links, error: linkErr } = await supabaseBrowser
         .from('variant_option_values')
-        .select('variant_id, option_value_id, option_values(option_type_id)')
+        .select('variant_id, option_value_id, option_values!variant_option_values_option_value_id_fkey(option_type_id)')
         .in('variant_id', ids);
+      if (linkErr) throw linkErr as any;
       for (const l of links || []) {
         // only map color type
         if ((l as any).option_values?.option_type_id === colorTypeId) {
@@ -492,26 +646,31 @@ export default function EditProductPage() {
     if (vErr) throw vErr;
     const vid = (v as any).id as string;
     if (payload.color_value_id) {
-      await supabaseBrowser
+      const { error } = await supabaseBrowser
         .from('variant_option_values')
         .insert({ variant_id: vid, option_value_id: payload.color_value_id });
+      if (error) throw error;
     }
     if (payload.size_value_id) {
-      await supabaseBrowser
+      const { error } = await supabaseBrowser
         .from('variant_option_values')
         .insert({ variant_id: vid, option_value_id: payload.size_value_id });
+      if (error) throw error;
     }
     if (payload.model_value_id) {
-      await supabaseBrowser
+      const { error } = await supabaseBrowser
         .from('variant_option_values')
         .insert({ variant_id: vid, option_value_id: payload.model_value_id });
+      if (error) throw error;
     }
     if (payload.package_value_id) {
-      await supabaseBrowser
+      const { error } = await supabaseBrowser
         .from('variant_option_values')
         .insert({ variant_id: vid, option_value_id: payload.package_value_id });
+      if (error) throw error;
     }
     setVariants((prev) => [...prev, { id: vid, sku: (v as any).sku, price: Number((v as any).price), active: !!(v as any).active, color_value_id: payload.color_value_id ?? null, size_value_id: payload.size_value_id ?? null, model_value_id: payload.model_value_id ?? null, package_value_id: payload.package_value_id ?? null, on_hand: 0 }]);
+    setVariantsDirtyFlag(true);
   };
 
   const updateVariant = async (id: string, patch: Partial<VariantRow>) => {
@@ -519,63 +678,76 @@ export default function EditProductPage() {
     if (patch.sku != null) update.sku = patch.sku;
     if (patch.price != null) update.price = patch.price;
     if (patch.active != null) update.active = patch.active;
-    if (Object.keys(update).length) await supabaseBrowser.from('variants').update(update).eq('id', id);
+    if (Object.keys(update).length) {
+      const { error } = await supabaseBrowser.from('variants').update(update).eq('id', id);
+      if (error) throw error;
+    }
     if (patch.color_value_id != null || patch.size_value_id != null || patch.model_value_id != null || patch.package_value_id != null) {
       // upsert mapping row for color
-      const { data: existing } = await supabaseBrowser
+      const { data: existing, error: exErr } = await supabaseBrowser
         .from('variant_option_values')
-        .select('variant_id, option_value_id, option_values(option_type_id)')
+        .select('variant_id, option_value_id, option_values!variant_option_values_option_value_id_fkey(option_type_id)')
         .eq('variant_id', id);
+      if (exErr) throw exErr;
       if (patch.color_value_id != null) {
         const colorLink = (existing || []).find((r: any) => r.option_values?.option_type_id === colorTypeId);
         if (colorLink) {
-          await supabaseBrowser
+          const { error } = await supabaseBrowser
             .from('variant_option_values')
             .update({ option_value_id: patch.color_value_id })
             .eq('variant_id', id)
             .eq('option_value_id', colorLink.option_value_id);
+          if (error) throw error;
         } else if (patch.color_value_id) {
-          await supabaseBrowser.from('variant_option_values').insert({ variant_id: id, option_value_id: patch.color_value_id });
+          const { error } = await supabaseBrowser.from('variant_option_values').insert({ variant_id: id, option_value_id: patch.color_value_id });
+          if (error) throw error;
         }
       }
       if (patch.size_value_id != null) {
         const sizeLink = (existing || []).find((r: any) => r.option_values?.option_type_id === sizeTypeId);
         if (sizeLink) {
-          await supabaseBrowser
+          const { error } = await supabaseBrowser
             .from('variant_option_values')
             .update({ option_value_id: patch.size_value_id })
             .eq('variant_id', id)
             .eq('option_value_id', sizeLink.option_value_id);
+          if (error) throw error;
         } else if (patch.size_value_id) {
-          await supabaseBrowser.from('variant_option_values').insert({ variant_id: id, option_value_id: patch.size_value_id });
+          const { error } = await supabaseBrowser.from('variant_option_values').insert({ variant_id: id, option_value_id: patch.size_value_id });
+          if (error) throw error;
         }
       }
       if (patch.model_value_id != null) {
         const modelLink = (existing || []).find((r: any) => r.option_values?.option_type_id === modelTypeId);
         if (modelLink) {
-          await supabaseBrowser
+          const { error } = await supabaseBrowser
             .from('variant_option_values')
             .update({ option_value_id: patch.model_value_id })
             .eq('variant_id', id)
             .eq('option_value_id', modelLink.option_value_id);
+          if (error) throw error;
         } else if (patch.model_value_id) {
-          await supabaseBrowser.from('variant_option_values').insert({ variant_id: id, option_value_id: patch.model_value_id });
+          const { error } = await supabaseBrowser.from('variant_option_values').insert({ variant_id: id, option_value_id: patch.model_value_id });
+          if (error) throw error;
         }
       }
       if (patch.package_value_id != null) {
         const packLink = (existing || []).find((r: any) => r.option_values?.option_type_id === packageTypeId);
         if (packLink) {
-          await supabaseBrowser
+          const { error } = await supabaseBrowser
             .from('variant_option_values')
             .update({ option_value_id: patch.package_value_id })
             .eq('variant_id', id)
             .eq('option_value_id', packLink.option_value_id);
+          if (error) throw error;
         } else if (patch.package_value_id) {
-          await supabaseBrowser.from('variant_option_values').insert({ variant_id: id, option_value_id: patch.package_value_id });
+          const { error } = await supabaseBrowser.from('variant_option_values').insert({ variant_id: id, option_value_id: patch.package_value_id });
+          if (error) throw error;
         }
       }
     }
     setVariants((prev) => prev.map((v) => (v.id === id ? { ...v, ...patch } : v)));
+    setVariantsDirtyFlag(true);
   };
 
   const setOnHand = async (id: string, onHand: number) => {
@@ -780,6 +952,20 @@ export default function EditProductPage() {
 
   return (
     <div className="space-y-8 max-w-5xl">
+      {isDirty && (
+        <div className="fixed left-0 right-0 top-0 z-40 border-b bg-yellow-50 text-yellow-900">
+          <div className="max-w-5xl mx-auto px-4 py-2 flex items-center justify-between gap-3">
+            <div className="text-sm font-medium flex items-center gap-2">
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-yellow-200">!</span>
+              <span>Unsaved changes</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button className="px-3 py-1 rounded border text-sm" onClick={discardChanges} disabled={saving}>Discard</button>
+              <button className="px-3 py-1 rounded bg-black text-white text-sm" onClick={saveAllEdits} disabled={!isDirty || saving}>{saving ? 'Saving…' : 'Save'}</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">Edit Product</h1>
         <a href={`/lp/${slug}`} target="_blank" className="px-3 py-2 rounded border">View LP</a>
@@ -947,15 +1133,15 @@ export default function EditProductPage() {
             <div className="flex flex-wrap gap-2 items-end">
               <div>
                 <label className="block text-xs">SKU <HelpTip>Your internal code for the specific variant. Must be unique.</HelpTip></label>
-                <input id="v-sku" className="border rounded px-2 py-1" />
+                <input id="v-sku" className="border rounded px-2 py-1" onChange={()=>setVariantFormChangedFlag(true)} />
               </div>
               <div>
                 <label className="block text-xs">Price <HelpTip>Sale price shown to customers for this variant.</HelpTip></label>
-                <input id="v-price" type="number" step="0.01" className="border rounded px-2 py-1 w-32" />
+                <input id="v-price" type="number" step="0.01" className="border rounded px-2 py-1 w-32" onChange={()=>setVariantFormChangedFlag(true)} />
               </div>
               <div>
                 <label className="block text-xs">Color <HelpTip>Optional. Choose a color value to associate with this variant.</HelpTip></label>
-                <select id="v-color" className="border rounded px-2 py-1">
+                <select id="v-color" className="border rounded px-2 py-1" onChange={()=>setVariantFormChangedFlag(true)}>
                   <option value="">(none)</option>
                   {colors.map((c) => (
                     <option key={c.id} value={c.id}>{c.value}</option>
@@ -964,7 +1150,7 @@ export default function EditProductPage() {
               </div>
               <div>
                 <label className="block text-xs">Size <HelpTip>Optional. Choose a size value for this variant.</HelpTip></label>
-                <select id="v-size" className="border rounded px-2 py-1">
+                <select id="v-size" className="border rounded px-2 py-1" onChange={()=>setVariantFormChangedFlag(true)}>
                   <option value="">(none)</option>
                   {sizes.map((s) => (
                     <option key={s.id} value={s.id}>{s.value}</option>
@@ -973,7 +1159,7 @@ export default function EditProductPage() {
               </div>
               <div>
                 <label className="block text-xs">Model <HelpTip>Optional. Variant model/style if the type is enabled.</HelpTip></label>
-                <select id="v-model" className="border rounded px-2 py-1">
+                <select id="v-model" className="border rounded px-2 py-1" onChange={()=>setVariantFormChangedFlag(true)}>
                   <option value="">(none)</option>
                   {models.map((m) => (
                     <option key={m.id} value={m.id}>{m.value}</option>
@@ -982,7 +1168,7 @@ export default function EditProductPage() {
               </div>
               <div>
                 <label className="block text-xs">Package <HelpTip>Optional. Pack count/bundle selection.</HelpTip></label>
-                <select id="v-package" className="border rounded px-2 py-1">
+                <select id="v-package" className="border rounded px-2 py-1" onChange={()=>setVariantFormChangedFlag(true)}>
                   <option value="">(none)</option>
                   {packages.map((p) => (
                     <option key={p.id} value={p.id}>{p.value}</option>
@@ -990,7 +1176,7 @@ export default function EditProductPage() {
                 </select>
               </div>
               <div className="flex items-center gap-2">
-                <input id="v-active" type="checkbox" defaultChecked />
+                <input id="v-active" type="checkbox" defaultChecked onChange={()=>setVariantFormChangedFlag(true)} />
                 <label htmlFor="v-active" className="text-sm">Active <HelpTip>Uncheck to hide this variant from purchase without deleting it.</HelpTip></label>
               </div>
               <button className="px-3 py-1 rounded border" onClick={() => {
@@ -1002,9 +1188,11 @@ export default function EditProductPage() {
                 const packVal = (document.getElementById('v-package') as HTMLSelectElement).value;
                 const active = (document.getElementById('v-active') as HTMLInputElement).checked;
                 if (!sku || !Number.isFinite(price)) return;
+                // keep current behavior: add immediately, but also clear dirty
                 addVariant({ sku, price, active, color_value_id: colorVal ? Number(colorVal) : null, size_value_id: sizeVal ? Number(sizeVal) : null, model_value_id: modelVal ? Number(modelVal) : null, package_value_id: packVal ? Number(packVal) : null });
-                (document.getElementById('v-sku') as HTMLInputElement).value='';
-                (document.getElementById('v-price') as HTMLInputElement).value='';
+                ['v-sku','v-price','v-color','v-size','v-model','v-package'].forEach((id)=>{ const el = document.getElementById(id) as any; if (el) el.value=''; });
+                const av = document.getElementById('v-active') as HTMLInputElement | null; if (av) av.checked = true;
+                setVariantFormChangedFlag(false);
               }}>Add</button>
             </div>
           </div>
@@ -1030,10 +1218,10 @@ export default function EditProductPage() {
                   {variants.map((v) => (
                     <tr key={v.id} className="border-b last:border-0">
                       <td className="py-2 pr-3">
-                        <input defaultValue={v.sku} onBlur={(e)=>updateVariant(v.id,{ sku: e.target.value })} className="border rounded px-2 py-1" />
+                        <input id={`row-sku-${v.id}`} defaultValue={v.sku} onChange={()=>setVariantsDirtyFlag(true)} onBlur={(e)=>updateVariant(v.id,{ sku: e.target.value })} className="border rounded px-2 py-1" />
                       </td>
                       <td className="py-2 pr-3">
-                        <select defaultValue={v.color_value_id ?? ''} onChange={(e)=>updateVariant(v.id,{ color_value_id: e.target.value ? Number(e.target.value) : null })} className="border rounded px-2 py-1">
+                        <select id={`row-color-${v.id}`} defaultValue={v.color_value_id ?? ''} onChange={(e)=>{ setVariantsDirtyFlag(true); updateVariant(v.id,{ color_value_id: e.target.value ? Number(e.target.value) : null }); }} className="border rounded px-2 py-1">
                           <option value="">(none)</option>
                           {colors.map((c) => (
                             <option key={c.id} value={c.id}>{c.value}</option>
@@ -1041,7 +1229,7 @@ export default function EditProductPage() {
                         </select>
                       </td>
                       <td className="py-2 pr-3">
-                        <select defaultValue={v.size_value_id ?? ''} onChange={(e)=>updateVariant(v.id,{ size_value_id: e.target.value ? Number(e.target.value) : null })} className="border rounded px-2 py-1">
+                        <select id={`row-size-${v.id}`} defaultValue={v.size_value_id ?? ''} onChange={(e)=>{ setVariantsDirtyFlag(true); updateVariant(v.id,{ size_value_id: e.target.value ? Number(e.target.value) : null }); }} className="border rounded px-2 py-1">
                           <option value="">(none)</option>
                           {sizes.map((s) => (
                             <option key={s.id} value={s.id}>{s.value}</option>
@@ -1049,7 +1237,7 @@ export default function EditProductPage() {
                         </select>
                       </td>
                       <td className="py-2 pr-3">
-                        <select defaultValue={v.model_value_id ?? ''} onChange={(e)=>updateVariant(v.id,{ model_value_id: e.target.value ? Number(e.target.value) : null })} className="border rounded px-2 py-1">
+                        <select id={`row-model-${v.id}`} defaultValue={v.model_value_id ?? ''} onChange={(e)=>{ setVariantsDirtyFlag(true); updateVariant(v.id,{ model_value_id: e.target.value ? Number(e.target.value) : null }); }} className="border rounded px-2 py-1">
                           <option value="">(none)</option>
                           {models.map((m) => (
                             <option key={m.id} value={m.id}>{m.value}</option>
@@ -1057,7 +1245,7 @@ export default function EditProductPage() {
                         </select>
                       </td>
                       <td className="py-2 pr-3">
-                        <select defaultValue={v.package_value_id ?? ''} onChange={(e)=>updateVariant(v.id,{ package_value_id: e.target.value ? Number(e.target.value) : null })} className="border rounded px-2 py-1">
+                        <select id={`row-pack-${v.id}`} defaultValue={v.package_value_id ?? ''} onChange={(e)=>{ setVariantsDirtyFlag(true); updateVariant(v.id,{ package_value_id: e.target.value ? Number(e.target.value) : null }); }} className="border rounded px-2 py-1">
                           <option value="">(none)</option>
                           {packages.map((p) => (
                             <option key={p.id} value={p.id}>{p.value}</option>
@@ -1065,13 +1253,13 @@ export default function EditProductPage() {
                         </select>
                       </td>
                       <td className="py-2 pr-3">
-                        <input type="number" step="0.01" defaultValue={v.price} onBlur={(e)=>updateVariant(v.id,{ price: Number(e.target.value) })} className="border rounded px-2 py-1 w-28" />
+                        <input id={`row-price-${v.id}`} type="number" step="0.01" defaultValue={v.price} onChange={()=>setVariantsDirtyFlag(true)} onBlur={(e)=>updateVariant(v.id,{ price: Number(e.target.value) })} className="border rounded px-2 py-1 w-28" />
                       </td>
                       <td className="py-2 pr-3">
-                        <input type="number" defaultValue={v.on_hand ?? 0} onBlur={(e)=>setOnHand(v.id, Number(e.target.value))} className="border rounded px-2 py-1 w-24" />
+                        <input id={`row-onhand-${v.id}`} type="number" defaultValue={v.on_hand ?? 0} onChange={()=>setVariantsDirtyFlag(true)} onBlur={(e)=>setOnHand(v.id, Number(e.target.value))} className="border rounded px-2 py-1 w-24" />
                       </td>
                       <td className="py-2 pr-3">
-                        <input type="checkbox" defaultChecked={v.active} onChange={(e)=>updateVariant(v.id,{ active: e.target.checked })} />
+                        <input id={`row-active-${v.id}`} type="checkbox" defaultChecked={v.active} onChange={(e)=>{ setVariantsDirtyFlag(true); updateVariant(v.id,{ active: e.target.checked }); }} />
                       </td>
                       <td className="py-2 pr-3">
                         <button onClick={()=>removeVariant(v.id)} className="px-2 py-1 rounded border text-xs">Delete</button>

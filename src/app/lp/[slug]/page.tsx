@@ -136,10 +136,11 @@ async function fetchLpData(slug: string) {
   let packageByVariant: Record<string, string> = {};
   let sizeByVariant: Record<string, string> = {};
   if (variantIds.length) {
-    const { data: mapping } = await supabase
+    const { data: mapping, error: mapErr } = await supabase
       .from('variant_option_values')
-      .select('variant_id, option_values(value, option_type_id)')
+      .select('variant_id, option_values!variant_option_values_option_value_id_fkey(value, option_type_id)')
       .in('variant_id', variantIds);
+    if (mapErr) throw mapErr;
     for (const row of mapping ?? []) {
       const vId = (row as any).variant_id as string;
       const ov = (row as any).option_values as any;
