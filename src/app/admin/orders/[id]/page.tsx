@@ -13,14 +13,15 @@ async function fetchOrder(id: string) {
   if (error) throw error;
   if (!order) return null;
 
-  const { data: items, error: itemsError } = await supabase
-    .from('order_items')
-    .select('id, order_id, qty, price')
+  // Fetch order lines with variant SKU
+  const { data: lines, error: linesError } = await supabase
+    .from('order_lines')
+    .select('id, order_id, variant_id, qty, unit_price, line_total, variants!inner(sku)')
     .eq('order_id', id);
-  if (itemsError) throw itemsError;
+  if (linesError) throw linesError;
 
-  const total = (items ?? []).reduce((sum, it: any) => sum + Number(it.qty) * Number(it.price), 0);
-  return { order, items: items ?? [], total } as const;
+  const total = (lines ?? []).reduce((sum, it: any) => sum + Number(it.line_total || 0), 0);
+  return { order, items: lines ?? [], total } as const;
 }
 
 export default async function OrderDetailPage({ params }: { params: { id: string } }) {
@@ -79,23 +80,25 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="text-left border-b">
+                    <th className="py-2 pr-4">SKU</th>
                     <th className="py-2 pr-4">Qty</th>
-                    <th className="py-2 pr-4">Price</th>
+                    <th className="py-2 pr-4">Unit Price</th>
                     <th className="py-2 pr-4">Line Total</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((it: any) => (
                     <tr key={it.id} className="border-b">
+                      <td className="py-2 pr-4">{it.variants?.sku || it.variant_id}</td>
                       <td className="py-2 pr-4">{it.qty}</td>
-                      <td className="py-2 pr-4">{Number(it.price).toLocaleString()} PKR</td>
-                      <td className="py-2 pr-4">{(Number(it.qty) * Number(it.price)).toLocaleString()} PKR</td>
+                      <td className="py-2 pr-4">{Number(it.unit_price).toLocaleString()} PKR</td>
+                      <td className="py-2 pr-4">{Number(it.line_total).toLocaleString()} PKR</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td className="py-2 pr-4 font-medium" colSpan={2}>Total</td>
+                    <td className="py-2 pr-4 font-medium" colSpan={3}>Total</td>
                     <td className="py-2 pr-4 font-medium">{total.toLocaleString()} PKR</td>
                   </tr>
                 </tfoot>

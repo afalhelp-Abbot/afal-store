@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { getSupabaseServiceClient } from '@/lib/supabaseService';
 
 /*
 Expected payload (JSON):
@@ -25,7 +25,9 @@ Expected payload (JSON):
 
 export async function POST(req: Request) {
   try {
-    const supabase = getSupabaseServerClient();
+    // Use privileged client (service role) on the server to bypass RLS during order creation
+    // Never expose SUPABASE_SERVICE_ROLE_KEY to the browser.
+    const supabase = getSupabaseServiceClient();
     const body = await req.json();
 
     // Basic validation
@@ -37,70 +39,144 @@ export async function POST(req: Request) {
     if (!customer.name || !customer.phone || !customer.address || !customer.city) {
       return NextResponse.json({ error: 'Missing required customer fields' }, { status: 400 });
     }
-
-    // Fetch variant prices to lock in price at order time
-    const variantIds = items.map((i) => i.variant_id);
-    const { data: variants, error: vErr } = await supabase
-      .from('variants')
-      .select('id, price, active')
-      .in('id', variantIds);
-    if (vErr) return NextResponse.json({ error: vErr.message }, { status: 500 });
-
-    const priceById = new Map<string, number>();
-    for (const v of variants ?? []) {
-      // @ts-ignore
-      if (v.active === false) {
-        return NextResponse.json({ error: 'One or more variants are inactive' }, { status: 400 });
-      }
-      // @ts-ignore
-      priceById.set(v.id, Number(v.price));
+    // Delegate atomic creation + reservation to Postgres function `place_order`
+    const { data, error } = await supabase.rpc('place_order', {
+      p_customer: customer,
+      p_items: items,
+      p_utm: body?.utm ?? {},
+    });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
-    // Ensure all variants exist
-    for (const it of items) {
-      if (!priceById.has(it.variant_id)) {
-        return NextResponse.json({ error: `Variant not found: ${it.variant_id}` }, { status: 400 });
+    const orderId = data as string;
+    // Try to send an email notification (non-blocking)
+    try {
+      const RESEND_API_KEY = process.env.RESEND_API_KEY;
+      if (RESEND_API_KEY) {
+        const from = process.env.RESEND_FROM || 'Afal Store <onboarding@resend.dev>';
+
+        // Pull line details for a proper summary
+        const { data: lines } = await getSupabaseServiceClient()
+          .from('order_lines')
+          .select('variant_id, qty, unit_price, line_total, variants!inner(sku)')
+          .eq('order_id', orderId);
+
+        const lineRows = (lines as any[]) || [];
+        const subtotal = lineRows.reduce((s, r) => s + Number(r.line_total || 0), 0);
+        const shipping = 0;
+        const total = subtotal + shipping;
+
+        const itemsHtml = lineRows.map(r => `
+          <tr>
+            <td style="padding:8px;border-bottom:1px solid #eee;font-family:Arial,Helvetica,sans-serif;">${r?.variants?.sku || r.variant_id}</td>
+            <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-family:Arial,Helvetica,sans-serif;">${Number(r.qty)}</td>
+            <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-family:Arial,Helvetica,sans-serif;">PKR ${Number(r.unit_price).toLocaleString()}</td>
+            <td style="padding:8px;border-bottom:1px solid #eee;text-align:right;font-family:Arial,Helvetica,sans-serif;">PKR ${Number(r.line_total).toLocaleString()}</td>
+          </tr>
+        `).join('');
+
+        const htmlBase = (greeting: string) => `
+          <div style="max-width:640px;margin:0 auto;padding:16px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px">
+            <h2 style="margin:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;color:#111827;">${greeting}</h2>
+            <p style="margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;color:#374151;">Order ID: <strong>#${orderId}</strong></p>
+            <div style="margin:12px 0;padding:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px">
+              <p style="margin:0;font-family:Arial,Helvetica,sans-serif;color:#374151;">${customer.name}<br/>
+              ${customer.address}, ${customer.city}${customer.province_code ? ' ('+customer.province_code+')' : ''}<br/>
+              ${customer.phone}${customer.email ? ' · '+customer.email : ''}</p>
+            </div>
+            <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-top:8px">
+              <thead>
+                <tr style="background:#f3f4f6">
+                  <th style="padding:8px;text-align:left;font-family:Arial,Helvetica,sans-serif;color:#374151;">SKU</th>
+                  <th style="padding:8px;text-align:right;font-family:Arial,Helvetica,sans-serif;color:#374151;">Qty</th>
+                  <th style="padding:8px;text-align:right;font-family:Arial,Helvetica,sans-serif;color:#374151;">Unit</th>
+                  <th style="padding:8px;text-align:right;font-family:Arial,Helvetica,sans-serif;color:#374151;">Line</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsHtml}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="3" style="padding:8px;text-align:right;font-family:Arial,Helvetica,sans-serif;border-top:1px solid #eee;">Items subtotal</td>
+                  <td style="padding:8px;text-align:right;font-family:Arial,Helvetica,sans-serif;border-top:1px solid #eee;">PKR ${subtotal.toLocaleString()}</td>
+                </tr>
+                <tr>
+                  <td colspan="3" style="padding:8px;text-align:right;font-family:Arial,Helvetica,sans-serif;">Shipping</td>
+                  <td style="padding:8px;text-align:right;font-family:Arial,Helvetica,sans-serif;">PKR ${shipping.toLocaleString()}</td>
+                </tr>
+                <tr>
+                  <td colspan="3" style="padding:8px;text-align:right;font-weight:bold;font-family:Arial,Helvetica,sans-serif;">Total</td>
+                  <td style="padding:8px;text-align:right;font-weight:bold;font-family:Arial,Helvetica,sans-serif;">PKR ${total.toLocaleString()}</td>
+                </tr>
+              </tfoot>
+            </table>
+            <p style="margin-top:16px;font-family:Arial,Helvetica,sans-serif;color:#6b7280;font-size:14px;">If you have any questions, simply reply to this email.</p>
+          </div>`;
+
+        const adminSubject = `New order placed: ${orderId}`;
+        const adminText = `New order ${orderId} by ${customer.name}, phone ${customer.phone}. Total: PKR ${total}.`;
+        const adminHtml = htmlBase('New order received');
+
+        console.log('[orders/create] Sending email via Resend to afalhelp@gmail.com with from=%s', from);
+        const emailRes = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${RESEND_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from,
+            to: ['afalhelp@gmail.com'],
+            subject: adminSubject,
+            text: adminText,
+            html: adminHtml,
+          }),
+        });
+        if (!emailRes.ok) {
+          const body = await emailRes.text();
+          console.error('[orders/create] Resend error (admin)', emailRes.status, body);
+        } else {
+          try {
+            const okJson = await emailRes.json();
+            console.log('[orders/create] Resend accepted (admin):', okJson);
+          } catch { console.log('[orders/create] Resend accepted (admin)'); }
+          // Customer confirmation if email provided
+          if (customer.email) {
+            const customerSubject = `Thank you for your order (${orderId})`;
+            const customerText = `Thank you for your order. Your order ID is ${orderId}. Total: PKR ${total}.`;
+            const customerHtml = htmlBase('Thank you for your order');
+            const custRes = await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${RESEND_API_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                from,
+                to: [String(customer.email)],
+                subject: customerSubject,
+                text: customerText,
+                html: customerHtml,
+              }),
+            });
+            if (!custRes.ok) {
+              const body = await custRes.text();
+              console.error('[orders/create] Resend error (customer)', custRes.status, body);
+            } else {
+              try {
+                const okJson2 = await custRes.json();
+                console.log('[orders/create] Resend accepted (customer):', okJson2);
+              } catch { console.log('[orders/create] Resend accepted (customer)'); }
+            }
+          }
+        }
       }
-      if (!Number.isFinite(it.qty) || it.qty <= 0) {
-        return NextResponse.json({ error: `Invalid qty for variant ${it.variant_id}` }, { status: 400 });
-      }
+    } catch (e) {
+      // Swallow email errors; do not block order creation
+      console.error('Email notification failed', e);
     }
-
-    // Insert order header
-    const { data: orderIns, error: oErr } = await supabase
-      .from('orders')
-      .insert({
-        status: 'pending',
-        customer_name: customer.name,
-        // email column should exist; if not, add it in DB: ALTER TABLE orders ADD COLUMN IF NOT EXISTS email text;
-        email: customer.email ?? null,
-        phone: customer.phone,
-        address: customer.address,
-        city: customer.city,
-        province_code: customer.province_code ?? null,
-        utm_source: body?.utm?.source ?? null,
-        utm_medium: body?.utm?.medium ?? null,
-        utm_campaign: body?.utm?.campaign ?? null,
-      })
-      .select('id')
-      .single();
-
-    if (oErr) return NextResponse.json({ error: oErr.message }, { status: 500 });
-    const orderId = orderIns!.id as string;
-
-    // Build order_items payload with locked prices
-    const itemsRows = items.map((it) => ({
-      order_id: orderId,
-      variant_id: it.variant_id,
-      qty: it.qty,
-      price: priceById.get(it.variant_id)!,
-    }));
-
-    const { error: oiErr } = await supabase.from('order_items').insert(itemsRows);
-    if (oiErr) return NextResponse.json({ error: oiErr.message }, { status: 500 });
-
-    // Optional: reserve inventory here via RPC 'adjust_stock' or by updating 'reserved'
-    // Skipped for now; we will finalize reservation logic after end-to-end verification.
-
+    // Always respond with success JSON when order is created
     return NextResponse.json({ ok: true, order_id: orderId }, { status: 201 });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Unknown error' }, { status: 500 });

@@ -26,16 +26,16 @@ async function fetchOrders(search: Search) {
   const ids = (data ?? []).map((o) => o.id);
   if (ids.length === 0) return [] as any[];
 
-  // Fetch item totals per order
-  const { data: items } = await supabase
-    .from('order_items')
-    .select('order_id, qty, price')
+  // Fetch totals per order from order_lines (preferred: sum of line_total)
+  const { data: lines } = await supabase
+    .from('order_lines')
+    .select('order_id, line_total')
     .in('order_id', ids);
 
   const totals: Record<string, number> = {};
-  for (const it of items ?? []) {
-    const key = String((it as any).order_id);
-    totals[key] = (totals[key] ?? 0) + Number((it as any).qty) * Number((it as any).price);
+  for (const ln of lines ?? []) {
+    const key = String((ln as any).order_id);
+    totals[key] = (totals[key] ?? 0) + Number((ln as any).line_total || 0);
   }
   return (data ?? []).map((o) => ({ ...o, total: totals[String(o.id)] ?? 0 }));
 }
