@@ -50,6 +50,9 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
   const packsOrEmpty = packages.length ? packages : [''];
   const useModel = models.length ? model : '';
 
+  // Determine if we have only Color (no size/package dimensions)
+  const onlyColor = sizes.length === 0 && packages.length === 0 && models.length === 0;
+
   const formRef = React.useRef<HTMLFormElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -110,56 +113,84 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
               </div>
             )}
 
-            {/* Grid: Size x Package */}
-            <div>
-              <div className="text-sm text-gray-600 mb-2">Choose quantities</div>
-              <div className="overflow-auto">
-                <table className="w-full text-sm min-w-[520px] border">
-                  <thead>
-                    <tr className="bg-gray-50">
-                      <th className="p-2 text-left">Size</th>
-                      {packsOrEmpty.map((p) => (
-                        <th key={p || 'empty'} className="p-2 text-left">{p || '—'}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sizesOrEmpty.map((s) => (
-                      <tr key={s || 'empty'} className="border-t">
-                        <td className="p-2 font-medium">{s || '—'}</td>
-                        {packsOrEmpty.map((p) => {
-                          const key = `${color || ''}|${useModel}|${p || ''}|${s || ''}`;
-                          const cell = matrix[key];
-                          const avail = cell?.availability ?? 0;
-                          const price = cell?.price;
-                          const disabled = !cell || avail <= 0;
-                          const v = qtyMap[key] ?? 0;
-                          return (
-                            <td key={(p||'empty')+'-'+(s||'empty')} className="p-2">
-                              {disabled ? (
-                                <span className="text-gray-400">—</span>
-                              ) : (
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    max={Math.max(0, avail)}
-                                    value={v}
-                                    onChange={(e)=>setQty(key, Number(e.target.value))}
-                                    className="border rounded px-2 py-1 w-20"
-                                  />
-                                  <div className="text-xs text-gray-600">{avail} avail · PKR {Number(price).toLocaleString()}</div>
-                                </div>
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {/* Quantity UI */}
+            {onlyColor ? (
+              <div>
+                <div className="text-sm text-gray-600 mb-2">Quantity</div>
+                {(() => {
+                  const key = `${color || ''}|${useModel}|${''}|${''}`;
+                  const cell = matrix[key];
+                  const avail = cell?.availability ?? 0;
+                  const price = cell?.price;
+                  const disabled = !cell || avail <= 0;
+                  const v = qtyMap[key] ?? 0;
+                  return (
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min={0}
+                        max={Math.max(0, avail)}
+                        value={v}
+                        onChange={(e)=>setQty(key, Number(e.target.value))}
+                        className="border rounded px-3 py-2 w-24"
+                        disabled={disabled}
+                      />
+                      <div className="text-sm text-gray-600">{disabled ? 'Out of stock' : `${avail} available · PKR ${Number(price).toLocaleString()}`}</div>
+                    </div>
+                  );
+                })()}
               </div>
-            </div>
+            ) : (
+              <div>
+                <div className="text-sm text-gray-600 mb-2">Choose quantities</div>
+                <div className="overflow-auto">
+                  <table className="w-full text-sm min-w-[520px] border">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="p-2 text-left">Size</th>
+                        {packsOrEmpty.map((p) => (
+                          <th key={p || 'empty'} className="p-2 text-left">{p || '—'}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sizesOrEmpty.map((s) => (
+                        <tr key={s || 'empty'} className="border-t">
+                          <td className="p-2 font-medium">{s || '—'}</td>
+                          {packsOrEmpty.map((p) => {
+                            const key = `${color || ''}|${useModel}|${p || ''}|${s || ''}`;
+                            const cell = matrix[key];
+                            const avail = cell?.availability ?? 0;
+                            const price = cell?.price;
+                            const disabled = !cell || avail <= 0;
+                            const v = qtyMap[key] ?? 0;
+                            return (
+                              <td key={(p||'empty')+'-'+(s||'empty')} className="p-2">
+                                {disabled ? (
+                                  <span className="text-gray-400">—</span>
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      max={Math.max(0, avail)}
+                                      value={v}
+                                      onChange={(e)=>setQty(key, Number(e.target.value))}
+                                      className="border rounded px-2 py-1 w-20"
+                                    />
+                                    <div className="text-xs text-gray-600">{avail} avail · PKR {Number(price).toLocaleString()}</div>
+                                  </div>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* No customer info here. Proceed to checkout to fill address & payment. */}
 

@@ -83,10 +83,10 @@ async function fetchLpData(slug: string) {
       : ({ type: 'image', src: m.url as string, alt: m.alt as string | undefined, thumb: (m.thumb_url as string | undefined) })
   );
 
-  // 2) Active variants (id, sku, price)
+  // 2) Active variants (id, sku, price, thumb_url)
   const { data: variants } = await supabase
     .from('variants')
-    .select('id, sku, price, active')
+    .select('id, sku, price, active, thumb_url')
     .eq('product_id', product.id)
     .eq('active', true)
     .order('price', { ascending: true });
@@ -201,6 +201,25 @@ async function fetchLpData(slug: string) {
     .eq('product_id', product.id)
     .order('sort', { ascending: true });
 
+  // 7b) Build accurate color -> thumbnail map using real option mappings
+  const colorThumbs: Record<string, string | undefined> = {};
+  if (variants && variants.length) {
+    // Build reverse: color value -> list of variants
+    const byColor: Record<string, any[]> = {};
+    for (const v of variants as any[]) {
+      const id = v.id as string;
+      const color = colorByVariant[id];
+      if (!color) continue;
+      if (!byColor[color]) byColor[color] = [];
+      byColor[color].push(v);
+    }
+    for (const c of colors) {
+      const arr = byColor[c] || [];
+      const withThumb = arr.find((v:any)=>v.thumb_url);
+      colorThumbs[c] = (withThumb?.thumb_url as string | undefined) || undefined;
+    }
+  }
+
   return {
     product,
     mediaItems,
@@ -210,6 +229,7 @@ async function fetchLpData(slug: string) {
     packages,
     sizes,
     matrix,
+    colorThumbs,
     specs: specs ?? [],
     sections: sections ?? [],
   } as const;
@@ -221,7 +241,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
     return <div className="p-6">Landing page not found.</div>;
   }
 
-  const { product, mediaItems, colors, models, packages, sizes, matrix, specs, sections } = data;
+  const { product, mediaItems, colors, models, packages, sizes, matrix, specs, sections, colorThumbs } = data as any;
 
   return (
     <div className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-10 items-start">
@@ -362,6 +382,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
             packages={packages}
             sizes={sizes}
             matrix={matrix}
+            colorThumbs={colorThumbs}
           />
         </div>
       </aside>

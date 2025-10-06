@@ -14,13 +14,13 @@ type VariantRow = {
   sku: string;
   price: number;
   product_id?: string;
+  thumb_url?: string | null;
   color?: string;
   size?: string;
   model?: string;
   pack?: string;
 };
 
-// Province codes must match public.provinces.code in Supabase (see table: AJK, BL, GB, ICT, KP, PB, SD)
 const PK_PROVINCES = [
   { code: "SD", name: "Sindh" },
   { code: "PB", name: "Punjab" },
@@ -91,7 +91,7 @@ function CheckoutInner() {
         // Fetch variants
         const { data: vrows, error: vErr } = await supabaseBrowser
           .from("variants")
-          .select("id, sku, price, active, product_id")
+          .select("id, sku, price, active, product_id, thumb_url")
           .in("id", ids)
           .eq("active", true);
         if (vErr) throw vErr;
@@ -102,6 +102,7 @@ function CheckoutInner() {
             sku: (r as any).sku,
             price: Number((r as any).price) || 0,
             product_id: (r as any).product_id,
+            thumb_url: (r as any).thumb_url || null,
           };
         }
         // Fetch thumbnails per product
@@ -325,12 +326,18 @@ function CheckoutInner() {
                     <tr key={i} className="border-b last:border-0">
                       <td className="p-3 font-medium whitespace-nowrap">
                         <div className="flex items-center gap-3">
-                          {v?.product_id && (thumbByProduct[v.product_id] ? (
+                          {/* Prefer variant-specific thumbnail; fall back to product-level */}
+                          {v?.thumb_url ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={thumbByProduct[v.product_id]} alt={v?.sku || 'Product'} className="w-10 h-10 object-cover rounded border" />
-                          ) : (
-                            <div className="w-10 h-10 rounded border bg-gray-100" />
-                          ))}
+                            <img src={v.thumb_url as string} alt={v?.sku || 'Variant'} className="w-10 h-10 object-cover rounded border" />
+                          ) : v?.product_id ? (
+                            thumbByProduct[v.product_id] ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={thumbByProduct[v.product_id]} alt={v?.sku || 'Product'} className="w-10 h-10 object-cover rounded border" />
+                            ) : (
+                              <div className="w-10 h-10 rounded border bg-gray-100" />
+                            )
+                          ) : null}
                           <span>{v?.sku || ln.variant_id.slice(0, 8)}</span>
                         </div>
                       </td>

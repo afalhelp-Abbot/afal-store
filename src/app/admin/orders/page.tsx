@@ -2,7 +2,7 @@ import { requireAdmin } from '@/lib/auth';
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
 import Link from 'next/link';
 
-type Search = { q?: string; status?: string };
+type Search = { q?: string; status?: string; productId?: string };
 
 async function fetchOrders(search: Search) {
   const supabase = getSupabaseServerClient();
@@ -19,6 +19,19 @@ async function fetchOrders(search: Search) {
     const q = `%${search.q.trim()}%`;
     // Search by name, email or phone
     query = query.or(`customer_name.ilike.${q},email.ilike.${q},phone.ilike.${q}`);
+  }
+  // Filter by product via order_lines -> variants.product_id
+  if (search.productId && search.productId !== 'all') {
+    const { data: lineOrders, error: lineErr } = await supabase
+      .from('order_lines')
+      .select('order_id, variants!inner(id, product_id)')
+      .eq('variants.product_id', search.productId);
+    if (lineErr) throw lineErr;
+    const orderIds = Array.from(new Set((lineOrders ?? []).map((r: any) => r.order_id)));
+    if (orderIds.length === 0) {
+      return [] as any[];
+    }
+    query = query.in('id', orderIds);
   }
   const { data, error } = await query;
   if (error) throw error;
@@ -42,9 +55,23 @@ async function fetchOrders(search: Search) {
 
 export default async function OrdersPage({ searchParams }: { searchParams: Search }) {
   await requireAdmin();
-  const orders = await fetchOrders(searchParams || {});
+  const supabase = getSupabaseServerClient();
+  let orders: any[] = [];
+  let fetchError: any = null;
+  try {
+    orders = await fetchOrders(searchParams || {});
+  } catch (e: any) {
+    fetchError = e;
+  }
   const currentStatus = searchParams?.status ?? 'all';
   const q = searchParams?.q ?? '';
+  const currentProduct = searchParams?.productId ?? 'all';
+
+  // Fetch products for the dropdown
+  const { data: products } = await supabase
+    .from('products')
+    .select('id, name')
+    .order('created_at', { ascending: false });
 
   return (
     <div className="space-y-6">
@@ -69,6 +96,15 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
             <option value="cancelled">Cancelled</option>
           </select>
         </div>
+        <div>
+          <label className="block text-sm">Product</label>
+          <select name="productId" defaultValue={currentProduct} className="border rounded px-3 py-2 min-w-[220px]">
+            <option value="all">All products</option>
+            {(products ?? []).map((p: any) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
         <div className="flex-1 min-w-[200px]">
           <label className="block text-sm">Search</label>
           <input name="q" defaultValue={q} placeholder="Name or Phone" className="border rounded px-3 py-2 w-full" />
@@ -76,6 +112,11 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
         <button className="bg-black text-white rounded px-4 py-2">Apply</button>
       </form>
 
+      {fetchError && (
+        <div className="border rounded p-3 text-sm text-red-700 bg-red-50">
+          Error loading orders: {String(fetchError?.message || fetchError)}
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead>

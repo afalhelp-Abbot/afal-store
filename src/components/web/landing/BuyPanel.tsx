@@ -10,9 +10,11 @@ type BuyPanelProps = {
   sizes: string[];
   // key is `${color}|${model}|${pack}` with empty string for missing dimension
   matrix: Record<string, { price: number; availability: number; variantId: string } >;
+  // optional color -> thumbnail url mapping
+  colorThumbs?: Record<string, string | undefined>;
 };
 
-export default function BuyPanel({ colors, models, packages, sizes, matrix }: BuyPanelProps) {
+export default function BuyPanel({ colors, models, packages, sizes, matrix, colorThumbs }: BuyPanelProps) {
   const [selectedColor, setSelectedColor] = React.useState<string>(colors[0] || '');
   const [selectedModel, setSelectedModel] = React.useState<string>(models[0] || '');
   const [selectedPackage, setSelectedPackage] = React.useState<string>(packages[0] || '');
@@ -108,18 +110,22 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix }: Bu
               .filter(([k]) => k.startsWith(`${c}|`))
               .reduce((acc, [, v]) => acc + (v?.availability ?? 0), 0);
             const disabled = a <= 0;
+            const thumb = colorThumbs?.[c];
             return (
               <button
                 key={c}
                 onClick={() => setSelectedColor(c)}
                 disabled={disabled}
-                className={`px-3 py-2 rounded-full border text-sm flex items-center gap-2 ${active ? 'bg-black text-white' : 'bg-white'} ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}
+                className={`rounded-full border text-sm flex items-center justify-center ${active ? 'ring-2 ring-black' : ''} ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'}`}
+                style={{ width: 40, height: 40, padding: 0, overflow: 'hidden', background: 'white' }}
                 title={disabled ? 'Out of stock' : `${a} available`}
               >
-                {active && (
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                {thumb ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={thumb} alt={c} width={40} height={40} style={{ objectFit: 'cover', width: '100%', height: '100%' }} />
+                ) : (
+                  <span className={`px-3 py-2 ${active ? 'bg-black text-white' : 'bg-white'}`}>{c}</span>
                 )}
-                <span>{c}</span>
               </button>
             );
           })}
