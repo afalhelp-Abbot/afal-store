@@ -259,6 +259,7 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
         sizes={sizes}
         matrix={matrix}
         initialColor={selectedColor || null}
+        colorThumbs={colorThumbs}
       />
 
       {/* Floating buy panel that follows scrolling; grows near bottom */}
@@ -273,24 +274,38 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
             {colors.length > 1 && (
               <div className="flex items-center gap-2 text-xs">
                 <span className="text-gray-600">Color</span>
-                <div className="flex gap-1 flex-wrap">
-                  {colors.slice(0,4).map((c) => (
-                    <button key={c} onClick={()=>setSelectedColor(c)} disabled={Object.entries(matrix).filter(([k])=>k.startsWith(`${c}|`)).reduce((a,[,v])=>a+(v?.availability||0),0)<=0} className={`px-2 py-1 rounded-full border ${selectedColor===c?'bg-black text-white':'bg-white'} text-xs`}>
-                      {c}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {sizes.length > 1 && (
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-gray-600">Size</span>
-                <div className="flex gap-1 flex-wrap">
-                  {sizes.slice(0,4).map((s) => (
-                    <button key={s} onClick={()=>setSelectedSize(s)} disabled={(matrix[`${selectedColor||''}|${models.length?selectedModel:''}|${packages.length?selectedPackage:''}|${s}`]?.availability||0)<=0} className={`px-2 py-1 rounded-full border ${selectedSize===s?'bg-black text-white':'bg-white'} text-xs`}>
-                      {s}
-                    </button>
-                  ))}
+                {/* Scrollable swatches with scroll-snap and edge fades */}
+                <div className="relative flex-1">
+                  <div className="flex gap-2 overflow-x-auto pr-1 snap-x snap-mandatory">
+                    {colors.map((c) => {
+                      const totalAvailForColor = Object.entries(matrix)
+                        .filter(([k]) => k.startsWith(`${c}|`))
+                        .reduce((acc, [, v]) => acc + (v?.availability ?? 0), 0);
+                      const disabled = totalAvailForColor <= 0;
+                      const thumb = colorThumbs?.[c];
+                      const active = selectedColor === c;
+                      return (
+                      <button
+                        key={c}
+                        onClick={() => setSelectedColor(c)}
+                        disabled={disabled}
+                        className={`${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'} ${active ? 'ring-2 ring-black' : ''} rounded-full border snap-start`}
+                        style={{ width: 32, height: 32, padding: 0, overflow: 'hidden', background: 'white' }}
+                        title={disabled ? 'Out of stock' : `${totalAvailForColor} available`}
+                      >
+                        {thumb ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={thumb} alt={c} width={32} height={32} style={{ objectFit: 'cover', width: '100%', height: '100%' }} />
+                        ) : (
+                          <span className={`px-2 ${active ? 'bg-black text-white' : 'bg-white'}`}>{c}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                  </div>
+                  {/* Edge fades */}
+                  <div className="pointer-events-none absolute left-0 top-0 h-full w-6 bg-gradient-to-r from-white to-transparent shadow-md" />
+                  <div className="pointer-events-none absolute right-0 top-0 h-full w-6 bg-gradient-to-l from-white to-transparent shadow-md" />
                 </div>
               </div>
             )}

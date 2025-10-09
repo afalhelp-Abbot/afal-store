@@ -35,6 +35,32 @@ export default function RichTextEditor({ value, onChange, placeholder, rtl, clas
     } catch {}
   };
 
+  // Apply font-size in pixels by leveraging execCommand('fontSize') and normalizing <font>
+  const setFontSizePx = (px: number) => {
+    if (!ref.current) return;
+    ref.current.focus();
+    try {
+      // Use size=7 as a marker, then convert to <span style="font-size: ..px">
+      document.execCommand('fontSize', false, '7');
+      // Replace any <font size="7"> within editor to span with px
+      const fonts = Array.from(ref.current.querySelectorAll('font[size="7"]')) as HTMLFontElement[];
+      fonts.forEach((fontEl) => {
+        const span = document.createElement('span');
+        span.style.fontSize = `${px}px`;
+        // carry inline color/fontName if any
+        const color = fontEl.getAttribute('color');
+        if (color) span.style.color = color;
+        const face = fontEl.getAttribute('face');
+        if (face) span.style.fontFamily = face;
+        while (fontEl.firstChild) span.appendChild(fontEl.firstChild);
+        fontEl.replaceWith(span);
+      });
+      normalizeLists();
+      const html = ref.current?.innerHTML || '';
+      onChange(html);
+    } catch {}
+  };
+
   // Remove list structure. If caret is inside a single <li>, unlist just that item.
   // If the selection spans the whole list, unwrap the entire list.
   const unlistSelection = () => {
@@ -264,6 +290,16 @@ export default function RichTextEditor({ value, onChange, placeholder, rtl, clas
             <option value="Times New Roman">Times New Roman</option>
             <option value="Verdana">Verdana</option>
             <option value="Tahoma">Tahoma</option>
+          </select>
+          <select onChange={(e) => { const v = Number(e.target.value); if (v) setFontSizePx(v); }} className="px-2 py-1 border rounded" title="Font size">
+            <option value="">Font size</option>
+            <option value="14">14 px</option>
+            <option value="16">16 px</option>
+            <option value="18">18 px</option>
+            <option value="20">20 px</option>
+            <option value="24">24 px</option>
+            <option value="28">28 px</option>
+            <option value="32">32 px</option>
           </select>
           <select onChange={(e) => cmd("formatBlock", e.target.value)} className="px-2 py-1 border rounded">
             <option value="">Paragraph</option>

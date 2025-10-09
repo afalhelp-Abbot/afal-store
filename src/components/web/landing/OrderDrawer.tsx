@@ -14,9 +14,10 @@ type OrderDrawerProps = {
   sizes: string[];
   matrix: Matrix;
   initialColor?: string | null;
+  colorThumbs?: Record<string, string | undefined>;
 };
 
-export default function OrderDrawer({ open, onClose, colors, models, packages, sizes, matrix, initialColor }: OrderDrawerProps) {
+export default function OrderDrawer({ open, onClose, colors, models, packages, sizes, matrix, initialColor, colorThumbs }: OrderDrawerProps) {
   const router = useRouter();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -44,7 +45,7 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
 
   // quantities keyed by matrix key
   const [qtyMap, setQtyMap] = React.useState<Record<string, number>>({});
-  const setQty = (k: string, qty: number) => setQtyMap((m) => ({ ...m, [k]: Math.max(0, Math.floor(qty || 0)) }));
+  const setQty = (k: string, qty: number) => setQtyMap((m) => ({ ...m, [k]: Math.max(0, Math.floor(Number.isFinite(qty) ? qty : 0)) }));
 
   const sizesOrEmpty = sizes.length ? sizes : [''];
   const packsOrEmpty = packages.length ? packages : [''];
@@ -52,6 +53,7 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
 
   // Determine if we have only Color (no size/package dimensions)
   const onlyColor = sizes.length === 0 && packages.length === 0 && models.length === 0;
+  const sizesOnly = sizes.length > 0 && packages.length === 0 && models.length === 0;
 
   const formRef = React.useRef<HTMLFormElement>(null);
 
@@ -67,7 +69,9 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
       if (items.length === 0) throw new Error('Please enter quantity for at least one option');
       // Pass items to /checkout using query param (URL-encoded JSON)
       const itemsParam = encodeURIComponent(JSON.stringify(items));
-      router.push(`/checkout?items=${itemsParam}`);
+      const fromPath = typeof window !== 'undefined' ? window.location.pathname : '/';
+      const fromParam = encodeURIComponent(fromPath);
+      router.push(`/checkout?items=${itemsParam}&from=${fromParam}`);
       onClose();
     } catch (err: any) {
       setError(err?.message || 'Unknown error');
@@ -96,9 +100,32 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
               <div>
                 <div className="text-sm text-gray-600 mb-2">Color</div>
                 <div className="flex flex-wrap gap-2">
-                  {colors.map((c) => (
-                    <button key={c} type="button" onClick={()=>setColor(c)} className={`px-3 py-1.5 rounded-full border text-sm ${c===color?'bg-black text-white':'bg-white hover:bg-gray-50'}`}>{c}</button>
-                  ))}
+                  {colors.map((c) => {
+                    const totalAvailForColor = Object.entries(matrix)
+                      .filter(([k]) => k.startsWith(`${c}|`))
+                      .reduce((acc, [, v]) => acc + (v?.availability ?? 0), 0);
+                    const disabled = totalAvailForColor <= 0;
+                    const thumb = colorThumbs?.[c];
+                    const active = c === color;
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setColor(c)}
+                        disabled={disabled}
+                        className={`${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'} ${active ? 'ring-2 ring-black' : ''} rounded-full border`}
+                        style={{ width: 40, height: 40, padding: 0, overflow: 'hidden', background: 'white' }}
+                        title={disabled ? 'Out of stock' : `${totalAvailForColor} available`}
+                      >
+                        {thumb ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={thumb} alt={c} width={40} height={40} style={{ objectFit: 'cover', width: '100%', height: '100%' }} />
+                        ) : (
+                          <span className={`px-3 py-2 ${active ? 'bg-black text-white' : 'bg-white'}`}>{c}</span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -130,7 +157,9 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
                         type="number"
                         min={0}
                         max={Math.max(0, avail)}
-                        value={v}
+                        placeholder="0"
+                        value={v === 0 ? '' : v}
+                        onFocus={(e)=> e.currentTarget.select()}
                         onChange={(e)=>setQty(key, Number(e.target.value))}
                         className="border rounded px-3 py-2 w-24"
                         disabled={disabled}
@@ -139,6 +168,42 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
                     </div>
                   );
                 })()}
+              </div>
+            ) : sizesOnly ? (
+              <div>
+                <div className="text-sm text-gray-600 mb-2">Choose quantities</div>
+                <div className="divide-y border rounded">
+                  {sizes.map((s) => {
+                    const key = `${color || ''}|${useModel}|${''}|${s || ''}`;
+                    const cell = matrix[key];
+                    const avail = cell?.availability ?? 0;
+                    const price = cell?.price;
+                    const disabled = !cell || avail <= 0;
+                    const v = qtyMap[key] ?? 0;
+                    return (
+                      <div key={s || 'empty'} className="flex items-center justify-between p-2">
+                        <div className="font-medium">{s || '—'}</div>
+                        {disabled ? (
+                          <span className="text-gray-400">—</span>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              min={0}
+                              max={Math.max(0, avail)}
+                              placeholder="0"
+                              value={v === 0 ? '' : v}
+                              onFocus={(e)=> e.currentTarget.select()}
+                              onChange={(e)=>setQty(key, Number(e.target.value))}
+                              className="border rounded px-2 py-1 w-20"
+                            />
+                            <div className="text-xs text-gray-600">{avail} avail · PKR {Number(price).toLocaleString()}</div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             ) : (
               <div>
@@ -174,7 +239,9 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
                                       type="number"
                                       min={0}
                                       max={Math.max(0, avail)}
-                                      value={v}
+                                      placeholder="0"
+                                      value={v === 0 ? '' : v}
+                                      onFocus={(e)=> e.currentTarget.select()}
                                       onChange={(e)=>setQty(key, Number(e.target.value))}
                                       className="border rounded px-2 py-1 w-20"
                                     />

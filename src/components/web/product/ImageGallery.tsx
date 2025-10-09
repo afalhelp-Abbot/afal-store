@@ -58,8 +58,8 @@ export default function ImageGallery({ items, className }: Props) {
 
   return (
     <div className={"grid grid-cols-1 gap-3 md:grid-cols-[96px_1fr] md:gap-5 " + (className ?? "")}> 
-      {/* Thumbnails (left on desktop, above/below on mobile) */}
-      <div className="order-2 md:order-1 md:sticky md:top-4 md:self-start">
+      {/* Thumbnails (left on desktop) */}
+      <div className="hidden md:block md:order-1 md:sticky md:top-4 md:self-start">
         <div ref={thumbsRef} className="flex md:flex-col gap-2 overflow-auto pr-1">
           {items.map((it, i) => (
             <button

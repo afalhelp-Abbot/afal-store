@@ -53,6 +53,28 @@ function CheckoutInner() {
     router.replace(`/checkout${qs}`);
   };
 
+  // If cart becomes empty (e.g., removed last item), send user back to LP or home
+  useEffect(() => {
+    if (loading) return;
+    if (success) return; // keep thank-you visible
+    if (lines.length === 0) {
+      try {
+        const urlFrom = search.get('from');
+        const ref = document.referrer;
+        const origin = window.location.origin;
+        const fromUrl = urlFrom ? new URL(decodeURIComponent(urlFrom), origin).toString() : '';
+        const sameOriginFrom = !!fromUrl && new URL(fromUrl).origin === origin;
+        const sameOriginRef = !!ref && new URL(ref, origin).origin === origin;
+        // Prefer explicit from param (LP), then referrer, else home
+        const target = sameOriginFrom ? fromUrl : sameOriginRef ? ref : "/";
+        // Use replace to avoid piling history entries
+        router.replace(target);
+      } catch {
+        router.replace("/");
+      }
+    }
+  }, [lines.length, loading, success, router, search]);
+
   // Handlers for qty and remove
   const setQtyAt = (idx: number, qty: number) => {
     setLines((prev) => {
@@ -282,10 +304,27 @@ function CheckoutInner() {
 
   if (loading) return <div className="max-w-5xl mx-auto p-6">Loading checkout…</div>;
   // After success we clear cart; still show Thank You panel below
-  if (!lines.length && !success) return <div className="max-w-5xl mx-auto p-6">Your cart is empty.</div>;
+  if (!lines.length && !success) {
+    // Fallback empty state in case redirect is blocked or user navigated directly
+    const ref = typeof document !== 'undefined' ? document.referrer : '';
+    let backHref = '/';
+    try {
+      if (ref && new URL(ref, typeof window !== 'undefined' ? window.location.origin : undefined).origin === (typeof window !== 'undefined' ? window.location.origin : '')) {
+        backHref = ref;
+      }
+    } catch {}
+    return (
+      <div className="max-w-5xl mx-auto p-6">
+        <div className="border rounded p-6 text-center space-y-3">
+          <div className="text-lg">Your cart is empty.</div>
+          <a href={backHref} className="inline-block bg-black text-white px-4 py-2 rounded">Continue Shopping</a>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-5xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8">
+    <div className="max-w-5xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8 items-start">
       {/* Left: Items and address */}
       <div className="space-y-6">
         <h1 className="text-2xl font-semibold">Checkout</h1>
@@ -305,67 +344,119 @@ function CheckoutInner() {
             </div>
           </div>
         ) : (
-          <div className="border rounded">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="text-left p-3">Item</th>
-                  <th className="text-left p-3">Variant</th>
-                  <th className="text-right p-3">Unit Price</th>
-                  <th className="text-right p-3">Qty</th>
-                  <th className="text-right p-3">Line Total</th>
-                  <th className="p-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((ln, i) => {
-                  const v = variants[ln.variant_id];
-                  const variantText = [v?.color, v?.size, v?.pack].filter(Boolean).join(" / ") || v?.sku;
-                  const lineTotal = (v?.price || 0) * ln.qty;
-                  return (
-                    <tr key={i} className="border-b last:border-0">
-                      <td className="p-3 font-medium whitespace-nowrap">
-                        <div className="flex items-center gap-3">
-                          {/* Prefer variant-specific thumbnail; fall back to product-level */}
-                          {v?.thumb_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={v.thumb_url as string} alt={v?.sku || 'Variant'} className="w-10 h-10 object-cover rounded border" />
-                          ) : v?.product_id ? (
-                            thumbByProduct[v.product_id] ? (
+          <>
+            {/* Mobile: card list */}
+            <div className="space-y-3 lg:hidden">
+              {lines.map((ln, i) => {
+                const v = variants[ln.variant_id];
+                const variantText = [v?.color, v?.size, v?.pack].filter(Boolean).join(" / ") || v?.sku;
+                const lineTotal = (v?.price || 0) * ln.qty;
+                return (
+                  <div key={i} className="border rounded p-3">
+                    <div className="flex items-center gap-3">
+                      {/* Prefer variant-specific thumbnail; fall back to product-level */}
+                      {v?.thumb_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={v.thumb_url as string} alt={v?.sku || 'Variant'} className="w-12 h-12 object-cover rounded border" />
+                      ) : v?.product_id ? (
+                        thumbByProduct[v.product_id] ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={thumbByProduct[v.product_id]} alt={v?.sku || 'Product'} className="w-12 h-12 object-cover rounded border" />
+                        ) : (
+                          <div className="w-12 h-12 rounded border bg-gray-100" />
+                        )
+                      ) : null}
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{v?.sku || ln.variant_id.slice(0, 8)}</div>
+                        <div className="text-sm text-gray-600 truncate">{variantText}</div>
+                      </div>
+                      <div className="ml-auto text-right whitespace-nowrap text-sm">PKR {Number(v?.price || 0).toLocaleString()}</div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between">
+                      <div className="text-sm text-gray-600">Line Total: <span className="font-medium text-gray-800">PKR {Number(lineTotal).toLocaleString()}</span></div>
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={() => decQty(i)} className="border rounded px-3 py-1">-</button>
+                        <input
+                          type="number"
+                          min={1}
+                          value={ln.qty}
+                          onChange={(e)=>setQtyAt(i, Number(e.target.value))}
+                          className="w-14 text-center border rounded px-2 py-1"
+                        />
+                        <button type="button" onClick={() => incQty(i)} className="border rounded px-3 py-1">+</button>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-right">
+                      <button type="button" onClick={() => removeLine(i)} className="text-red-600 hover:underline text-sm">Remove</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Desktop: table */}
+            <div className="border rounded hidden lg:block">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="text-left p-3">Item</th>
+                    <th className="text-left p-3">Variant</th>
+                    <th className="text-right p-3">Unit Price</th>
+                    <th className="text-right p-3">Qty</th>
+                    <th className="text-right p-3">Line Total</th>
+                    <th className="p-3"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((ln, i) => {
+                    const v = variants[ln.variant_id];
+                    const variantText = [v?.color, v?.size, v?.pack].filter(Boolean).join(" / ") || v?.sku;
+                    const lineTotal = (v?.price || 0) * ln.qty;
+                    return (
+                      <tr key={i} className="border-b last:border-0">
+                        <td className="p-3 font-medium whitespace-nowrap">
+                          <div className="flex items-center gap-3">
+                            {/* Prefer variant-specific thumbnail; fall back to product-level */}
+                            {v?.thumb_url ? (
                               // eslint-disable-next-line @next/next/no-img-element
-                              <img src={thumbByProduct[v.product_id]} alt={v?.sku || 'Product'} className="w-10 h-10 object-cover rounded border" />
-                            ) : (
-                              <div className="w-10 h-10 rounded border bg-gray-100" />
-                            )
-                          ) : null}
-                          <span>{v?.sku || ln.variant_id.slice(0, 8)}</span>
-                        </div>
-                      </td>
-                      <td className="p-3 text-gray-600">{variantText}</td>
-                      <td className="p-3 text-right">PKR {Number(v?.price || 0).toLocaleString()}</td>
-                      <td className="p-3">
-                        <div className="flex items-center justify-end gap-2">
-                          <button type="button" onClick={() => decQty(i)} className="border rounded px-2 py-1">-</button>
-                          <input
-                            type="number"
-                            min={1}
-                            value={ln.qty}
-                            onChange={(e)=>setQtyAt(i, Number(e.target.value))}
-                            className="w-14 text-right border rounded px-2 py-1"
-                          />
-                          <button type="button" onClick={() => incQty(i)} className="border rounded px-2 py-1">+</button>
-                        </div>
-                      </td>
-                      <td className="p-3 text-right">PKR {Number(lineTotal).toLocaleString()}</td>
-                      <td className="p-3 text-right">
-                        <button type="button" onClick={() => removeLine(i)} className="text-red-600 hover:underline">Remove</button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                              <img src={v.thumb_url as string} alt={v?.sku || 'Variant'} className="w-10 h-10 object-cover rounded border" />
+                            ) : v?.product_id ? (
+                              thumbByProduct[v.product_id] ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={thumbByProduct[v.product_id]} alt={v?.sku || 'Product'} className="w-10 h-10 object-cover rounded border" />
+                              ) : (
+                                <div className="w-10 h-10 rounded border bg-gray-100" />
+                              )
+                            ) : null}
+                            <span>{v?.sku || ln.variant_id.slice(0, 8)}</span>
+                          </div>
+                        </td>
+                        <td className="p-3 text-gray-600">{variantText}</td>
+                        <td className="p-3 text-right">PKR {Number(v?.price || 0).toLocaleString()}</td>
+                        <td className="p-3">
+                          <div className="flex items-center justify-end gap-2">
+                            <button type="button" onClick={() => decQty(i)} className="border rounded px-2 py-1">-</button>
+                            <input
+                              type="number"
+                              min={1}
+                              value={ln.qty}
+                              onChange={(e)=>setQtyAt(i, Number(e.target.value))}
+                              className="w-14 text-right border rounded px-2 py-1"
+                            />
+                            <button type="button" onClick={() => incQty(i)} className="border rounded px-2 py-1">+</button>
+                          </div>
+                        </td>
+                        <td className="p-3 text-right">PKR {Number(lineTotal).toLocaleString()}</td>
+                        <td className="p-3 text-right">
+                          <button type="button" onClick={() => removeLine(i)} className="text-red-600 hover:underline">Remove</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
 
         {/* Address & payment */}
@@ -437,8 +528,8 @@ function CheckoutInner() {
         )}
       </div>
 
-      {/* Right: Summary */}
-      <aside className="lg:sticky lg:top-6">
+      {/* Right: Summary (aligned with table top on desktop) */}
+      <aside className="lg:sticky lg:top-0 lg:mt-14">
         <div className="border rounded p-4 space-y-3 bg-white shadow-sm">
           <h2 className="font-medium">Order Summary</h2>
           <div className="flex items-center justify-between text-sm">

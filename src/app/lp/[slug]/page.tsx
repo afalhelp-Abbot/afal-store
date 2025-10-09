@@ -244,7 +244,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
   const { product, mediaItems, colors, models, packages, sizes, matrix, specs, sections, colorThumbs } = data as any;
 
   return (
-    <div className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-10 items-start">
+    <div className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-24 items-start">
       <UTMCapture />
       {/* Left: Gallery + Content */}
       <div className="space-y-8">
@@ -260,6 +260,18 @@ export default async function LandingPage({ params }: { params: { slug: string }
             <div className="aspect-[1/1] w-full grid place-items-center border rounded text-sm text-gray-500">No media yet</div>
           )}
         </section>
+
+        {/* Mobile Buy panel: visible only on small screens */}
+        <div className="block lg:hidden">
+          <BuyPanel
+            colors={colors}
+            models={models}
+            packages={packages}
+            sizes={sizes}
+            matrix={matrix}
+            colorThumbs={colorThumbs}
+          />
+        </div>
 
         {(specs && specs.length > 0) && (() => {
           const highlightsEn = (specs as any[]).filter(r => r.group === 'Highlights' && r.lang === 'en').map(r => r.label).filter(Boolean);
@@ -373,9 +385,10 @@ export default async function LandingPage({ params }: { params: { slug: string }
         )}
       </div>
 
-      {/* Right: Sticky Buy panel */}
-      <aside>
-        <div className="lg:sticky lg:top-6">
+      {/* Right: Sticky Buy panel (desktop only) */}
+      <aside className="hidden lg:block">
+        {/* Add an initial offset so the panel visually aligns with the gallery (not the page title) */}
+        <div className="lg:sticky lg:top-20 lg:mt-36 lg:ml-6">
           <BuyPanel
             colors={colors}
             models={models}
