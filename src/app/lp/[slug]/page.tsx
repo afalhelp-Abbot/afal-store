@@ -246,11 +246,12 @@ export default async function LandingPage({ params }: { params: { slug: string }
   return (
     <div className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-24 items-start">
       <UTMCapture />
+      {/* Page title spans both columns on desktop so aside aligns with gallery, not the title */}
+      <header className="space-y-2 lg:col-span-2">
+        <h1 className="text-3xl font-semibold">{product.name}</h1>
+      </header>
       {/* Left: Gallery + Content */}
       <div className="space-y-8">
-        <header className="space-y-2">
-          <h1 className="text-3xl font-semibold">{product.name}</h1>
-        </header>
 
         {/* Media Gallery */}
         <section>
@@ -337,8 +338,8 @@ export default async function LandingPage({ params }: { params: { slug: string }
                         <tbody>
                           {rows.map((r: { label: string; value: string }, i: number) => (
                             <tr key={i} className={`border-b ${i % 2 === 1 ? 'bg-gray-50' : ''}`}>
-                              <td className="py-2 pr-4 font-medium whitespace-nowrap align-top w-1/3">{r.label}</td>
-                              <td className="py-2 align-top w-2/3 break-words">{renderSpecValue(r.value)}</td>
+                              <td className="py-2 pr-4 font-medium whitespace-normal break-words after:content-[':'] after:ml-1 align-top w-1/3">{r.label}</td>
+                              <td className="py-2 pl-2 align-top w-2/3 break-words">{renderSpecValue(r.value)}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -387,8 +388,8 @@ export default async function LandingPage({ params }: { params: { slug: string }
 
       {/* Right: Sticky Buy panel (desktop only) */}
       <aside className="hidden lg:block">
-        {/* Add an initial offset so the panel visually aligns with the gallery (not the page title) */}
-        <div className="lg:sticky lg:top-20 lg:mt-36 lg:ml-6">
+        {/* Sticky Buy panel aligned with gallery top */}
+        <div className="lg:sticky lg:top-20 lg:ml-6">
           <BuyPanel
             colors={colors}
             models={models}
