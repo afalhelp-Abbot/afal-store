@@ -42,6 +42,7 @@ function CheckoutInner() {
   const [lines, setLines] = useState<Array<CartItem>>([]);
   const [variants, setVariants] = useState<Record<string, VariantRow>>({});
   const [thumbByProduct, setThumbByProduct] = useState<Record<string, string>>({});
+  const [logoByProduct, setLogoByProduct] = useState<Record<string, string>>({});
   const [successTotals, setSuccessTotals] = useState<{ subtotal: number; shipping: number; total: number }>({ subtotal: 0, shipping: 0, total: 0 });
 
   const formRef = useRef<HTMLFormElement>(null);
@@ -127,14 +128,20 @@ function CheckoutInner() {
             thumb_url: (r as any).thumb_url || null,
           };
         }
-        // Fetch thumbnails per product
+        // Fetch thumbnails and logos per product
         const productIds = Array.from(new Set((vrows || []).map((r: any) => r.product_id).filter(Boolean)));
         if (productIds.length) {
-          const { data: mediaRows } = await supabaseBrowser
-            .from("product_media")
-            .select("product_id, url, thumb_url, type, sort")
-            .in("product_id", productIds)
-            .order("sort", { ascending: true });
+          const [{ data: mediaRows }, { data: productsRows }] = await Promise.all([
+            supabaseBrowser
+              .from("product_media")
+              .select("product_id, url, thumb_url, type, sort")
+              .in("product_id", productIds)
+              .order("sort", { ascending: true }),
+            supabaseBrowser
+              .from("products")
+              .select("id, logo_url")
+              .in("id", productIds),
+          ]);
           const map: Record<string, string> = {};
           for (const m of mediaRows || []) {
             const pid = (m as any).product_id as string;
@@ -145,6 +152,13 @@ function CheckoutInner() {
             }
           }
           setThumbByProduct(map);
+          const logoMap: Record<string, string> = {};
+          for (const p of productsRows || []) {
+            const pid = (p as any).id as string;
+            const l = (p as any).logo_url as string | null;
+            if (l) logoMap[pid] = l;
+          }
+          setLogoByProduct(logoMap);
         }
         // Fetch option labels via join
         const { data: links } = await supabaseBrowser
@@ -327,7 +341,18 @@ function CheckoutInner() {
     <div className="max-w-5xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-8 items-start">
       {/* Left: Items and address */}
       <div className="space-y-6">
-        <h1 className="text-2xl font-semibold">Checkout</h1>
+        <div className="flex items-center gap-2">
+          {(() => {
+            // show first product logo if available
+            const firstPid = Object.values(variants)[0]?.product_id as string | undefined;
+            const logo = firstPid ? logoByProduct[firstPid] : undefined;
+            return logo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logo} alt="Logo" className="h-6 w-auto object-contain rounded border bg-white p-0.5" />
+            ) : null;
+          })()}
+          <h1 className="text-2xl font-semibold">Checkout</h1>
+        </div>
         {/* Items list or Thank You */}
         {success ? (
           <div className="rounded-lg border p-6 bg-gradient-to-r from-green-50 to-emerald-50 text-green-900 shadow-sm">
@@ -531,7 +556,17 @@ function CheckoutInner() {
       {/* Right: Summary (aligned with table top on desktop) */}
       <aside className="lg:sticky lg:top-0 lg:mt-14">
         <div className="border rounded p-4 space-y-3 bg-white shadow-sm">
-          <h2 className="font-medium">Order Summary</h2>
+          <div className="flex items-center gap-2">
+            {(() => {
+              const firstPid = Object.values(variants)[0]?.product_id as string | undefined;
+              const logo = firstPid ? logoByProduct[firstPid] : undefined;
+              return logo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={logo} alt="Logo" className="h-5 w-auto object-contain rounded border bg-white p-0.5" />
+              ) : null;
+            })()}
+            <h2 className="font-medium">Order Summary</h2>
+          </div>
           <div className="flex items-center justify-between text-sm">
             <span>Items subtotal</span>
             <span>

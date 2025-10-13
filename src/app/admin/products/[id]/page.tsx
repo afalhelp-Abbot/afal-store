@@ -18,6 +18,7 @@ type Product = {
   active: boolean;
   description_en: string | null;
   description_ur: string | null;
+  logo_url: string | null;
 };
 
 type Media = {
@@ -134,8 +135,9 @@ export default function EditProductPage() {
   const [active, setActive] = useState(false);
   const [descriptionEn, setDescriptionEn] = useState('');
   const [descriptionUr, setDescriptionUr] = useState('');
+  const [logoUrl, setLogoUrl] = useState<string>('');
   // snapshot of loaded basics
-  const [initialBasics, setInitialBasics] = useState<{ name: string; slug: string; active: boolean; descriptionEn: string; descriptionUr: string } | null>(null);
+  const [initialBasics, setInitialBasics] = useState<{ name: string; slug: string; active: boolean; descriptionEn: string; descriptionUr: string; logoUrl: string } | null>(null);
   // dirty flags for variants and add-variant form
   const [variantsDirtyFlag, setVariantsDirtyFlag] = useState(false);
   const [variantFormChangedFlag, setVariantFormChangedFlag] = useState(false);
@@ -147,7 +149,7 @@ export default function EditProductPage() {
       try {
         const { data: p, error: pErr } = await supabaseBrowser
           .from('products')
-          .select('id, name, slug, active, description_en, description_ur')
+          .select('id, name, slug, active, description_en, description_ur, logo_url')
           .eq('id', params.id)
           .maybeSingle();
         if (pErr) throw pErr;
@@ -158,12 +160,14 @@ export default function EditProductPage() {
         setActive(!!(p as any).active);
         setDescriptionEn((p as any).description_en || '');
         setDescriptionUr((p as any).description_ur || '');
+        setLogoUrl((p as any).logo_url || '');
         setInitialBasics({
           name: (p as any).name || '',
           slug: (p as any).slug || '',
           active: !!(p as any).active,
           descriptionEn: (p as any).description_en || '',
           descriptionUr: (p as any).description_ur || '',
+          logoUrl: (p as any).logo_url || '',
         });
 
         const { data: m, error: mErr } = await supabaseBrowser
@@ -286,12 +290,13 @@ export default function EditProductPage() {
           active,
           description_en: descriptionEn || null,
           description_ur: descriptionUr || null,
+          logo_url: logoUrl || null,
         })
         .eq('id', params.id);
       if (error) throw error;
       router.refresh();
       // update snapshot after successful save
-      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr });
+      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl });
     } catch (e: any) {
       setError(e?.message || 'Failed to save product');
     } finally {
@@ -307,9 +312,10 @@ export default function EditProductPage() {
       initialBasics.slug !== slug ||
       initialBasics.active !== active ||
       initialBasics.descriptionEn !== descriptionEn ||
-      initialBasics.descriptionUr !== descriptionUr
+      initialBasics.descriptionUr !== descriptionUr ||
+      initialBasics.logoUrl !== logoUrl
     );
-  }, [initialBasics, name, slug, active, descriptionEn, descriptionUr]);
+  }, [initialBasics, name, slug, active, descriptionEn, descriptionUr, logoUrl]);
 
   // beforeunload guard
   useEffect(() => {
@@ -329,6 +335,7 @@ export default function EditProductPage() {
     setActive(initialBasics.active);
     setDescriptionEn(initialBasics.descriptionEn);
     setDescriptionUr(initialBasics.descriptionUr);
+    setLogoUrl(initialBasics.logoUrl);
     // clear Add Variant form
     if (typeof document !== 'undefined') {
       ['v-sku','v-price','v-color','v-size','v-model','v-package'].forEach((id)=>{
@@ -377,10 +384,11 @@ export default function EditProductPage() {
           active,
           description_en: descriptionEn || null,
           description_ur: descriptionUr || null,
+          logo_url: logoUrl || null,
         })
         .eq('id', params.id);
       if (pErr) throw pErr;
-      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr });
+      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl });
 
       // 2) Add Variant (staged)
       const vf = readVariantForm();
@@ -936,6 +944,62 @@ export default function EditProductPage() {
     }
   };
 
+  // Generate a poster image from a specific timestamp of a video URL
+  const captureVideoFrame = (src: string, atSec = 1): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      try {
+        const video = document.createElement('video');
+        video.crossOrigin = 'anonymous';
+        video.preload = 'auto';
+        video.src = src;
+        const onError = () => reject(new Error('Unable to load video for poster capture'));
+        video.onerror = onError;
+        video.onloadedmetadata = () => {
+          const t = Math.min(Math.max(0.1, atSec), Math.max(0.1, video.duration - 0.1));
+          const seekTo = () => {
+            const w = Math.max(1, video.videoWidth);
+            const h = Math.max(1, video.videoHeight);
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) { reject(new Error('Canvas not supported')); return; }
+            ctx.drawImage(video, 0, 0, w, h);
+            canvas.toBlob((blob) => {
+              if (!blob) { reject(new Error('Failed to create image blob')); return; }
+              resolve(blob);
+            }, 'image/jpeg', 0.9);
+          };
+          const onSeeked = () => { seekTo(); cleanup(); };
+          const cleanup = () => {
+            video.removeEventListener('seeked', onSeeked);
+            video.onerror = null; video.onloadedmetadata = null;
+          };
+          video.addEventListener('seeked', onSeeked);
+          try { video.currentTime = t; } catch { onError(); }
+        };
+      } catch (e) {
+        reject(e as any);
+      }
+    });
+  };
+
+  const generatePosterFromVideo = async (mediaRow: Media, atSec = 1) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const blob = await captureVideoFrame(mediaRow.url, atSec);
+      const file = new File([blob], `poster-${mediaRow.id}-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      const url = await uploadToBucket(file);
+      const { error } = await supabaseBrowser.from('product_media').update({ poster_url: url }).eq('id', mediaRow.id);
+      if (error) throw error;
+      setMedia((prev) => prev.map((m) => (m.id === mediaRow.id ? { ...m, poster_url: url } as any : m)));
+    } catch (e: any) {
+      setError(e?.message || 'Failed to generate poster');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Specs Editor helpers
   const addSpec = async (lang: 'en' | 'ur') => {
     const { data, error } = await supabaseBrowser
@@ -1077,6 +1141,55 @@ export default function EditProductPage() {
           <label className="block font-medium">Description (Urdu) <HelpTip>Optional. Shown under the gallery on the LP when provided.</HelpTip></label>
           <div className="mt-1">
             <RichTextEditor value={descriptionUr} onChange={setDescriptionUr} placeholder="اردو تفصیل یہاں لکھیں..." rtl />
+          </div>
+        </div>
+        <div>
+          <label className="block font-medium">Logo <HelpTip>Small brand/product logo shown near the title on the LP.</HelpTip></label>
+          <div className="mt-2 flex items-start gap-4">
+            <div className="w-28 h-28 border rounded grid place-items-center overflow-hidden bg-white">
+              {logoUrl ? (
+                <img src={logoUrl} alt="Logo preview" className="max-w-full max-h-full object-contain" />
+              ) : (
+                <span className="text-xs text-gray-500">No logo</span>
+              )}
+            </div>
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="https://..."
+                  value={logoUrl}
+                  onChange={(e)=>setLogoUrl(e.target.value)}
+                  className="border rounded px-3 py-2 w-full"
+                />
+                <button type="button" className="px-3 py-2 rounded border" onClick={()=>setLogoUrl('')}>Clear</button>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <input
+                  id="logo-file"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e)=>{
+                    const f = (e.currentTarget.files || [])[0];
+                    if (!f) return;
+                    const sizeMB = Number((f.size / (1024*1024)).toFixed(1));
+                    if (sizeMB > MAX_IMAGE_MB) { setError(`Image is ${sizeMB} MB; max ${MAX_IMAGE_MB} MB.`); return; }
+                    try {
+                      setSaving(true);
+                      const url = await uploadToBucket(f);
+                      setLogoUrl(url);
+                    } catch (err:any) {
+                      setError(err?.message || 'Failed to upload logo');
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                />
+                <label htmlFor="logo-file" className="px-3 py-2 rounded border cursor-pointer">Upload</label>
+                <HelpTip>Paste a public URL or click Upload to store in the product-media bucket.</HelpTip>
+              </div>
+            </div>
           </div>
         </div>
         <div>
@@ -1630,6 +1743,14 @@ export default function EditProductPage() {
                     <label className="block text-xs">Poster image (optional) <HelpTip>Still image shown before playback or if video cannot auto-play.</HelpTip></label>
                     <input type="file" accept="image/*" onChange={(e)=> e.target.files && updateMediaField(m.id,'poster_url', e.target.files[0])} />
                     {m.poster_url && <div className="text-[10px] text-gray-600 break-all">poster: {m.poster_url}</div>}
+                    <button
+                      type="button"
+                      className="mt-1 px-2 py-1 rounded border text-xs"
+                      onClick={() => generatePosterFromVideo(m as any, 1)}
+                      title="Capture a frame around 1s and set as poster"
+                    >
+                      Generate poster from 1s
+                    </button>
                   </div>
                 )}
                 <button onClick={() => removeMedia(m.id)} className="mt-2 w-full px-2 py-1 rounded border text-xs">Remove</button>

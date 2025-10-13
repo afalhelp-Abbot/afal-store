@@ -65,7 +65,7 @@ async function fetchLpData(slug: string) {
   // 1) Product by slug
   const { data: product } = await supabase
     .from('products')
-    .select('id, name, slug, description_en, description_ur, active')
+    .select('id, name, slug, description_en, description_ur, active, logo_url')
     .eq('slug', slug)
     .eq('active', true)
     .maybeSingle();
@@ -247,8 +247,20 @@ export default async function LandingPage({ params }: { params: { slug: string }
     <div className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-24 items-start">
       <UTMCapture />
       {/* Page title spans both columns on desktop so aside aligns with gallery, not the title */}
-      <header className="space-y-2 lg:col-span-2">
-        <h1 className="text-3xl font-semibold">{product.name}</h1>
+      <header className="space-y-2 lg:col-span-2 mb-3 lg:mb-4">
+        <div className="flex flex-col items-center text-center gap-2 lg:flex-row lg:items-center lg:text-left lg:gap-4">
+          {product.logo_url && (
+            <img
+              src={product.logo_url as string}
+              alt="Logo"
+              className="h-10 lg:h-14 w-auto object-contain rounded border bg-white p-1 shadow-sm"
+            />
+          )}
+          <div>
+            <h1 className="text-xl lg:text-3xl font-semibold max-w-[36ch] leading-tight">{product.name}</h1>
+            <p className="text-sm text-gray-600 mt-1">Cash on Delivery · 24–48h Dispatch · Easy Returns</p>
+          </div>
+        </div>
       </header>
       {/* Left: Gallery + Content */}
       <div className="space-y-8">
@@ -271,6 +283,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
             sizes={sizes}
             matrix={matrix}
             colorThumbs={colorThumbs}
+            logoUrl={(product as any).logo_url as string | null}
           />
         </div>
 
@@ -397,6 +410,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
             sizes={sizes}
             matrix={matrix}
             colorThumbs={colorThumbs}
+            logoUrl={(product as any).logo_url as string | null}
           />
         </div>
       </aside>

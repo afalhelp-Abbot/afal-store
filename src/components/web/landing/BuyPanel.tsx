@@ -12,9 +12,11 @@ type BuyPanelProps = {
   matrix: Record<string, { price: number; availability: number; variantId: string } >;
   // optional color -> thumbnail url mapping
   colorThumbs?: Record<string, string | undefined>;
+  // optional product logo to show in the panel header
+  logoUrl?: string | null;
 };
 
-export default function BuyPanel({ colors, models, packages, sizes, matrix, colorThumbs }: BuyPanelProps) {
+export default function BuyPanel({ colors, models, packages, sizes, matrix, colorThumbs, logoUrl }: BuyPanelProps) {
   const [selectedColor, setSelectedColor] = React.useState<string>(colors[0] || '');
   const [selectedModel, setSelectedModel] = React.useState<string>(models[0] || '');
   const [selectedPackage, setSelectedPackage] = React.useState<string>(packages[0] || '');
@@ -95,6 +97,12 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
 
   return (
     <div ref={panelRef} className="border rounded p-4 space-y-4 shadow-sm">
+      {logoUrl && (
+        <div className="flex items-center mb-1">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={logoUrl} alt="Logo" className="h-6 w-auto object-contain rounded border bg-white p-0.5" />
+        </div>
+      )}
       <div>
         <div className="text-sm text-gray-600">Price</div>
         <div className="text-2xl font-semibold">{price != null ? `PKR ${Number(price).toLocaleString()}` : '—'}</div>
@@ -260,6 +268,7 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
         matrix={matrix}
         initialColor={selectedColor || null}
         colorThumbs={colorThumbs}
+        logoUrl={logoUrl}
       />
 
       {/* Floating buy panel that follows scrolling; grows near bottom */}

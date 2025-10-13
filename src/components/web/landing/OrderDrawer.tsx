@@ -15,9 +15,10 @@ type OrderDrawerProps = {
   matrix: Matrix;
   initialColor?: string | null;
   colorThumbs?: Record<string, string | undefined>;
+  logoUrl?: string | null;
 };
 
-export default function OrderDrawer({ open, onClose, colors, models, packages, sizes, matrix, initialColor, colorThumbs }: OrderDrawerProps) {
+export default function OrderDrawer({ open, onClose, colors, models, packages, sizes, matrix, initialColor, colorThumbs, logoUrl }: OrderDrawerProps) {
   const router = useRouter();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -57,6 +58,18 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
 
   const formRef = React.useRef<HTMLFormElement>(null);
 
+  // Autofocus first quantity input when opening
+  React.useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => {
+      try {
+        const el = formRef.current?.querySelector('input[type="number"]') as HTMLInputElement | null;
+        el?.focus(); el?.select();
+      } catch {}
+    }, 50);
+    return () => clearTimeout(t);
+  }, [open]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -88,11 +101,18 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
       <div className="absolute inset-0 bg-black/30" onClick={() => !loading && onClose()} />
 
       {/* Drawer */}
-      <div className="absolute right-0 top-0 bottom-0 w-full max-w-xl bg-white shadow-xl p-6 overflow-y-auto">
+      <div className="absolute right-0 top-0 bottom-0 w-full max-w-xl bg-white shadow-xl p-6 overflow-y-auto rounded-l-lg">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Select variations and quantity</h2>
+          <div className="flex items-center gap-2">
+            {logoUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logoUrl as string} alt="Logo" className="h-6 w-auto object-contain rounded border bg-white p-0.5" />
+            )}
+            <h2 className="text-lg font-semibold">Select variations and quantity</h2>
+          </div>
           <button onClick={() => !loading && onClose()} className="text-gray-500 hover:text-gray-700">✕</button>
         </div>
+        <div className="text-xs text-gray-500 mb-4">Cash on Delivery · 24–48h Dispatch · Easy Returns</div>
 
         <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
             {/* Choose Color */}
@@ -151,6 +171,7 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
                   const price = cell?.price;
                   const disabled = !cell || avail <= 0;
                   const v = qtyMap[key] ?? 0;
+                  const onKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => { if (e.key === 'Enter') { e.preventDefault(); formRef.current?.requestSubmit(); } };
                   return (
                     <div className="flex items-center gap-3">
                       <input
@@ -161,6 +182,7 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
                         value={v === 0 ? '' : v}
                         onFocus={(e)=> e.currentTarget.select()}
                         onChange={(e)=>setQty(key, Number(e.target.value))}
+                        onKeyDown={onKeyDown}
                         className="border rounded px-3 py-2 w-24"
                         disabled={disabled}
                       />
@@ -180,6 +202,7 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
                     const price = cell?.price;
                     const disabled = !cell || avail <= 0;
                     const v = qtyMap[key] ?? 0;
+                    const onKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => { if (e.key === 'Enter') { e.preventDefault(); formRef.current?.requestSubmit(); } };
                     return (
                       <div key={s || 'empty'} className="flex items-center justify-between p-2">
                         <div className="font-medium">{s || '—'}</div>
@@ -195,6 +218,7 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
                               value={v === 0 ? '' : v}
                               onFocus={(e)=> e.currentTarget.select()}
                               onChange={(e)=>setQty(key, Number(e.target.value))}
+                              onKeyDown={onKeyDown}
                               className="border rounded px-2 py-1 w-20"
                             />
                             <div className="text-xs text-gray-600">{avail} avail · PKR {Number(price).toLocaleString()}</div>
@@ -229,6 +253,7 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
                             const price = cell?.price;
                             const disabled = !cell || avail <= 0;
                             const v = qtyMap[key] ?? 0;
+                            const onKeyDown: React.KeyboardEventHandler<HTMLInputElement> = (e) => { if (e.key === 'Enter') { e.preventDefault(); formRef.current?.requestSubmit(); } };
                             return (
                               <td key={(p||'empty')+'-'+(s||'empty')} className="p-2">
                                 {disabled ? (
@@ -243,6 +268,7 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
                                       value={v === 0 ? '' : v}
                                       onFocus={(e)=> e.currentTarget.select()}
                                       onChange={(e)=>setQty(key, Number(e.target.value))}
+                                      onKeyDown={onKeyDown}
                                       className="border rounded px-2 py-1 w-20"
                                     />
                                     <div className="text-xs text-gray-600">{avail} avail · PKR {Number(price).toLocaleString()}</div>
@@ -260,21 +286,16 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
             )}
 
             {/* No customer info here. Proceed to checkout to fill address & payment. */}
-
-            {error && <div className="text-sm text-red-600">{error}</div>}
-
-            <div className="pt-2 flex items-center gap-3">
-              <button
-                type="submit"
-                disabled={loading}
-                className={`rounded px-4 py-2 text-white ${loading ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
-              >
-                {loading ? '...' : 'Proceed to Checkout'}
-              </button>
-              <button type="button" onClick={onClose} disabled={loading} className="px-4 py-2 rounded border">
-                Cancel
-              </button>
-            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className={`rounded px-4 py-2 text-white ${loading ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
+            >
+              {loading ? '...' : 'Proceed to Checkout'}
+            </button>
+            <button type="button" onClick={onClose} disabled={loading} className="px-4 py-2 rounded border">
+              Cancel
+            </button>
           </form>
       </div>
     </div>
