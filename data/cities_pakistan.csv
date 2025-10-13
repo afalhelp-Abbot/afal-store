@@ -1,0 +1,152 @@
+province_code,code,name
+SD,KHI,Karachi
+SD,HYD,Hyderabad
+SD,SKR,Sukkur
+SD,LRK,Larkana
+SD,SBA,Shaheed Benazirabad (Nawabshah)
+SD,MRK,Mirpur Khas
+SD,THA,Tharparkar (Mithi)
+SD,TTT,Thatta
+SD,SJW,Sujawal
+SD,BDN,Badin
+SD,SHK,Shikarpur
+SD,JCB,Jacobabad
+SD,GHT,Ghotki
+SD,DAD,Dadu
+SD,KHP,Khairpur
+SD,UMK,Umerkot
+SD,SNG,Sanghar
+SD,TAY,Tando Allahyar
+SD,TMK,Tando Muhammad Khan
+SD,MTI,Matiari
+SD,JMR,Jamshoro
+SD,KSM,Kashmore
+SD,QMB,Qambar Shahdadkot
+SD,NFZ,Naushahro Feroze
+SD,MSK,Malir (Karachi)
+SD,KWK,Keamari (Karachi)
+
+PB,LHR,Lahore
+PB,FSD,Faisalabad
+PB,RWP,Rawalpindi
+PB,MLT,Multan
+PB,GJW,Gujranwala
+PB,SAL,Sialkot
+PB,BWP,Bahawalpur
+PB,SGD,Sargodha
+PB,SKP,Sheikhupura
+PB,RYK,Rahim Yar Khan
+PB,JHG,Jhang
+PB,GJT,Gujrat
+PB,KSR,Kasur
+PB,VHR,Vehari
+PB,SHW,Sahiwal
+PB,OKR,Okara
+PB,MIW,Mianwali
+PB,DGK,Dera Ghazi Khan
+PB,CHT,Chiniot
+PB,TTS,Toba Tek Singh
+PB,KNL,Khanewal
+PB,LDH,Lodhran
+PB,HFD,Hafizabad
+PB,MBN,Mandi Bahauddin
+PB,NRW,Narowal
+PB,MZF,Muzaffargarh
+PB,BKR,Bhakkar
+PB,NKS,Nankana Sahib
+PB,ATK,Attock
+PB,CHR,Chakwal
+PB,PKP,Pakpattan
+PB,LAY,Layyah
+PB,BNB,Bahawalnagar
+PB,KOH,Khushab
+PB,RJP,Rajanpur
+PB,JLM,Jhelum
+PB,MRR,Murree
+PB,SMB,Sambrial
+PB,WZD,Wazirabad
+PB,KAM,Kamoke
+PB,SRQ,Sharaqpur
+PB,PTK,Pattoki
+PB,YZM,Yazman
+PB,FAB,Fort Abbas
+PB,HSP,Hasilpur
+PB,AFW,Arifwala
+PB,CHC,Chichawatni
+PB,HSL,Hafizabad City
+PB,FRZ,Farooqabad
+PB,BOY,Burewala
+PB,MTN,Minchinabad
+
+KP,PSH,Peshawar
+KP,MRD,Mardan
+KP,SWB,Swabi
+KP,NOW,Nowshera
+KP,CHD,Charsadda
+KP,ABT,Abbottabad
+KP,HRP,Haripur
+KP,MSH,Mansehra
+KP,SWT,Swat (Mingora)
+KP,KHT,Kohat
+KP,BNN,Bannu
+KP,DIK,Dera Ismail Khan
+KP,KAR,Karak
+KP,LKM,Lakki Marwat
+KP,MLK,Malakand
+KP,DIR,Dir
+KP,UDR,Upper Dir
+KP,LDR,Lower Dir (Timergara)
+KP,CHT,Chitral
+KP,SHA,Shangla
+KP,BTM,Battagram
+KP,HNG,Hangu
+KP,TNK,Tank
+KP,UPK,Upper Kohistan
+KP,LPK,Lower Kohistan
+KP,BJR,Buner
+
+BL,QQA,Quetta
+BL,KZD,Khuzdar
+BL,TRB,Turbat (Kech)
+BL,GWD,Gwadar
+BL,CHM,Chaman
+BL,SIB,Sibi
+BL,ZHB,Zhob
+BL,LRL,Loralai
+BL,NSK,Noshki
+BL,LSB,Lasbela (Hub)
+BL,PNJ,Panjgur
+BL,KRN,Kharan
+BL,USH,Usta Muhammad
+BL,DKI,Duki
+BL,KLA,Killa Abdullah
+BL,WSH,Washuk
+BL,HSP,Harnai
+BL,MBG,Mastung
+BL,AWK,Awaran
+BL,KIH,Kohlu
+BL,DER,Dera Bugti
+BL,JFR,Jafarabad
+
+ICT,ISB,Islamabad
+
+AJK,MZD,Muzaffarabad
+AJK,MRP,Mirpur
+AJK,KTL,Kotli
+AJK,BHB,Bhimber
+AJK,BGH,Bagh
+AJK,RAW,Rawalakot (Poonch)
+AJK,HVL,Haveli Kahuta
+AJK,NLM,Neelum
+AJK,SDN,Sudhnoti
+
+GB,GLG,Gilgit
+GB,SKD,Skardu
+GB,HNZ,Hunza
+GB,GHZ,Ghizer
+GB,KHM,Kharmang
+GB,SGR,Shigar
+GB,GNC,Ghanche
+GB,DMR,Diamer (Chilas)
+GB,AST,Astore
+GB,NGR,Nagar

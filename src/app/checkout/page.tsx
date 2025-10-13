@@ -19,6 +19,7 @@ type VariantRow = {
   size?: string;
   model?: string;
   pack?: string;
+  weight_kg?: number | null;
 };
 
 const PK_PROVINCES = [
@@ -44,6 +45,16 @@ function CheckoutInner() {
   const [thumbByProduct, setThumbByProduct] = useState<Record<string, string>>({});
   const [logoByProduct, setLogoByProduct] = useState<Record<string, string>>({});
   const [successTotals, setSuccessTotals] = useState<{ subtotal: number; shipping: number; total: number }>({ subtotal: 0, shipping: 0, total: 0 });
+  // Provinces / Cities sourced from DB
+  const [provinces, setProvinces] = useState<Array<{ code: string; name: string }>>([]);
+  const [cities, setCities] = useState<Array<{ id: number; code: string; name: string }>>([]);
+  const [enableCityRates, setEnableCityRates] = useState<boolean>(false);
+  const [hasCityRules, setHasCityRules] = useState<boolean>(false);
+  const [provinceCode, setProvinceCode] = useState<string>("");
+  const [city, setCity] = useState<string>("");
+  const [productId, setProductId] = useState<string | null>(null);
+  const [shippingAmount, setShippingAmount] = useState<number | null>(null);
+  const [shippingLoading, setShippingLoading] = useState<boolean>(false);
 
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -114,7 +125,7 @@ function CheckoutInner() {
         // Fetch variants
         const { data: vrows, error: vErr } = await supabaseBrowser
           .from("variants")
-          .select("id, sku, price, active, product_id, thumb_url")
+          .select("id, sku, price, active, product_id, thumb_url, weight_kg")
           .in("id", ids)
           .eq("active", true);
         if (vErr) throw vErr;
@@ -126,9 +137,10 @@ function CheckoutInner() {
             price: Number((r as any).price) || 0,
             product_id: (r as any).product_id,
             thumb_url: (r as any).thumb_url || null,
+            weight_kg: (r as any).weight_kg ?? null,
           };
         }
-        // Fetch thumbnails and logos per product
+        // Fetch thumbnails per product
         const productIds = Array.from(new Set((vrows || []).map((r: any) => r.product_id).filter(Boolean)));
         if (productIds.length) {
           const [{ data: mediaRows }, { data: productsRows }] = await Promise.all([
@@ -142,6 +154,7 @@ function CheckoutInner() {
               .select("id, logo_url")
               .in("id", productIds),
           ]);
+          setProductId(productIds[0] as string);
           const map: Record<string, string> = {};
           for (const m of mediaRows || []) {
             const pid = (m as any).product_id as string;
@@ -188,6 +201,36 @@ function CheckoutInner() {
           if (ov.option_type_id === packId) vmap[vId].pack = ov.value;
         }
         setVariants(vmap);
+
+        // Load provinces list (DB)
+        const { data: provRows } = await supabaseBrowser
+          .from("provinces")
+          .select("code, name")
+          .order("name", { ascending: true });
+        setProvinces((provRows || []) as any);
+
+        // Determine shipping settings from the first product (assumes single-product checkout for LP)
+        const firstPid = productIds[0] as string | undefined;
+        if (firstPid) {
+          const [{ data: settings }, { data: anyCityRule }] = await Promise.all([
+            supabaseBrowser
+              .from("shipping_settings")
+              .select("enable_city_rates")
+              .eq("product_id", firstPid)
+              .maybeSingle(),
+            supabaseBrowser
+              .from("shipping_rules")
+              .select("id")
+              .eq("product_id", firstPid)
+              .not("city_id", "is", null)
+              .limit(1)
+          ]);
+          setEnableCityRates(Boolean((settings as any)?.enable_city_rates));
+          setHasCityRules(Boolean((anyCityRule || []).length));
+        } else {
+          setEnableCityRates(false);
+          setHasCityRules(false);
+        }
       } catch (e: any) {
         setError(e?.message || "Failed to load checkout");
       } finally {
@@ -197,9 +240,59 @@ function CheckoutInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemsParam]);
 
+  // When province changes and city-rates are enabled, fetch cities
+  useEffect(() => {
+    (async () => {
+      if (!enableCityRates || !provinceCode) { setCities([]); return; }
+      const { data } = await supabaseBrowser
+        .from("cities")
+        .select("id, code, name")
+        .eq("province_code", provinceCode)
+        .order("name", { ascending: true });
+      setCities((data || []) as any);
+    })();
+  }, [enableCityRates, provinceCode]);
+
+  // Subtotal of items
   const subtotal = useMemo(() => {
     return lines.reduce((acc, ln) => acc + (variants[ln.variant_id]?.price || 0) * ln.qty, 0);
   }, [lines, variants]);
+
+  // Compute total weight kg
+  const totalWeightKg = useMemo(() => {
+    return lines.reduce((acc, ln) => acc + ((variants[ln.variant_id]?.weight_kg || 0) * ln.qty), 0);
+  }, [lines, variants]);
+
+  // Call shipping quote when province/city/qty changes and we have productId
+  useEffect(() => {
+    (async () => {
+      if (!productId) { setShippingAmount(null); return; }
+      if (!provinceCode) { setShippingAmount(null); return; }
+      // City can be optional unless dropdown is enforced
+      try {
+        setShippingLoading(true);
+        const payload = {
+          product_id: productId,
+          province_code: provinceCode || null,
+          city: city || null,
+          coupon: null,
+          items: lines.map((ln) => ({ variant_id: ln.variant_id, qty: ln.qty })),
+          subtotal,
+          total_weight_kg: totalWeightKg,
+        };
+        const res = await fetch('/api/shipping/quote', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || 'Quote failed');
+        setShippingAmount(Number(data?.amount || 0));
+      } catch (e) {
+        setShippingAmount(null);
+      } finally {
+        setShippingLoading(false);
+      }
+    })();
+  }, [productId, provinceCode, city, lines, subtotal, totalWeightKg]);
+
+  
 
   // Basic client-side validators
   const isValidName = (s: string) => /^[A-Za-z ]+$/.test(s.trim());
@@ -522,22 +615,62 @@ function CheckoutInner() {
             </div>
             <div>
               <label className="block text-sm">City</label>
-              <input name="city" required className="border rounded px-3 py-2 w-full" />
+              {(enableCityRates && hasCityRules) && provinceCode ? (
+                <select
+                  value={city}
+                  onChange={(e)=> setCity(e.target.value)}
+                  className="border rounded px-3 py-2 w-full"
+                >
+                  <option value="">Select city</option>
+                  {cities.map((c)=> (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <>
+                  <input
+                    name="city"
+                    value={city}
+                    onChange={(e)=> setCity(e.target.value)}
+                    list={provinceCode ? "city-options" : undefined}
+                    className="border rounded px-3 py-2 w-full"
+                    placeholder="City"
+                  />
+                  {/* Provide suggestions when typing if a province is selected */}
+                  {provinceCode && cities.length > 0 && (
+                    <datalist id="city-options">
+                      {cities.map((c)=> (
+                        <option key={c.id} value={c.name} />
+                      ))}
+                    </datalist>
+                  )}
+                </>
+              )}
+              {/* Mirror city into a hidden input when using select to keep form payload consistent */}
+              <input type="hidden" name="city" value={city} />
             </div>
             <div>
               <label className="block text-sm">Province</label>
-              <select name="province_code" required className="border rounded px-3 py-2 w-full">
+              <select
+                name="province_code"
+                required
+                value={provinceCode}
+                onChange={(e)=> { setProvinceCode(e.target.value); setCity(""); }}
+                className="border rounded px-3 py-2 w-full"
+              >
                 <option value="">Select province</option>
-                {PK_PROVINCES.map((p) => (
-                  <option key={p.code} value={p.code}>
-                    {p.name}
-                  </option>
+                {provinces.map((p) => (
+                  <option key={p.code} value={p.code}>{p.name}</option>
                 ))}
               </select>
             </div>
             <div>
               <label className="block text-sm">Address</label>
-              <input name="address" required className="border rounded px-3 py-2 w-full" />
+              <input
+                name="address"
+                required
+                className="border rounded px-3 py-2 w-full"
+              />
             </div>
             <div className="pt-2 flex items-center gap-3">
               <button
@@ -575,12 +708,26 @@ function CheckoutInner() {
           </div>
           <div className="flex items-center justify-between text-sm">
             <span>Shipping</span>
-            <span>{success ? `PKR ${Number(successTotals.shipping).toLocaleString()}` : 'Calculated after address'}</span>
+            <span>
+              {success ? (
+                `PKR ${Number(successTotals.shipping).toLocaleString()}`
+              ) : shippingLoading ? (
+                'Calculating…'
+              ) : shippingAmount != null ? (
+                `PKR ${Number(shippingAmount).toLocaleString()}`
+              ) : (
+                'Calculated after address'
+              )}
+            </span>
           </div>
           <div className="border-t pt-2 flex items-center justify-between font-semibold">
             <span>Total</span>
             <span>
-              PKR {Number(success ? successTotals.total : subtotal).toLocaleString()}
+              {(() => {
+                const base = Number(success ? successTotals.subtotal : subtotal) || 0;
+                const ship = success ? Number(successTotals.shipping) || 0 : Number(shippingAmount || 0);
+                return `PKR ${(base + ship).toLocaleString()}`;
+              })()}
             </span>
           </div>
         </div>
