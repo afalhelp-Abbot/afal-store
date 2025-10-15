@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServiceClient } from '@/lib/supabaseService';
+import crypto from 'crypto';
 
 /*
 Expected payload (JSON):
@@ -171,6 +172,78 @@ export async function POST(req: Request) {
     } catch (e) {
       // Swallow email errors; do not block order creation
       console.error('Email notification failed', e);
+    }
+
+    // Conversions API (Meta) — Purchase event (server-to-server)
+    try {
+      const PIXEL_ID = process.env.FB_PIXEL_ID;
+      const ACCESS_TOKEN = process.env.FB_ACCESS_TOKEN;
+      if (!PIXEL_ID || !ACCESS_TOKEN) {
+        console.warn('[orders/create] FB CAPI disabled (missing FB_PIXEL_ID or FB_ACCESS_TOKEN)');
+      } else {
+        // Build value and contents from order_lines
+        const { data: lines2 } = await getSupabaseServiceClient()
+          .from('order_lines')
+          .select('variant_id, qty, unit_price, line_total, variants!inner(sku)')
+          .eq('order_id', orderId);
+        const lineRows2 = (lines2 as any[]) || [];
+        const value = lineRows2.reduce((s, r) => s + Number(r.line_total || 0), 0) + Number((body?.shipping?.amount as any) || 0); // include shipping
+        const contents = lineRows2.map(r => ({ id: r?.variants?.sku || r.variant_id, quantity: Number(r.qty), item_price: Number(r.unit_price) }));
+
+        // User data: fbp/fbc from payload, IP/UA from headers, hash email/phone
+        const fbp = body?.fbMeta?.fbp || null;
+        const fbc = body?.fbMeta?.fbc || null;
+        const ua = req.headers.get('user-agent') || undefined;
+        const ip = (req.headers.get('x-forwarded-for') || '').split(',')[0]?.trim() || undefined;
+
+        const sha256 = (s?: string | null) => {
+          if (!s) return undefined;
+          try {
+            return crypto.createHash('sha256').update(String(s).trim().toLowerCase()).digest('hex');
+          } catch { return undefined; }
+        };
+        const em = sha256(body?.customer?.email || null);
+        // Normalize PK phone like +92XXXXXXXXXX before hashing
+        const normPhone = (p?: string | null) => (p ? p.replace(/\D/g, '') : undefined);
+        const ph = sha256(normPhone(body?.customer?.phone || null));
+
+        const payload = {
+          data: [
+            {
+              event_name: 'Purchase',
+              event_time: Math.floor(Date.now() / 1000),
+              event_id: String(orderId), // dedupe with browser Purchase if sent with same id
+              action_source: 'website',
+              event_source_url: undefined,
+              user_data: {
+                client_user_agent: ua,
+                client_ip_address: ip,
+                fbp: fbp || undefined,
+                fbc: fbc || undefined,
+                em,
+                ph,
+              },
+              custom_data: {
+                currency: 'PKR',
+                value: Number(isFinite(value as any) ? value : 0),
+                contents,
+                content_type: 'product',
+              },
+            },
+          ],
+          test_event_code: process.env.FB_TEST_EVENT_CODE || undefined,
+        } as any;
+        const url = `https://graph.facebook.com/v17.0/${encodeURIComponent(PIXEL_ID)}/events?access_token=${encodeURIComponent(ACCESS_TOKEN)}`;
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const txt = await res.text();
+        if (!res.ok) {
+          console.error('[orders/create] FB CAPI error', res.status, txt);
+        } else {
+          console.log('[orders/create] FB CAPI sent', txt);
+        }
+      }
+    } catch (e) {
+      console.error('[orders/create] FB CAPI exception', e);
     }
     // Always respond with success JSON when order is created
     return NextResponse.json({ ok: true, order_id: orderId }, { status: 201 });

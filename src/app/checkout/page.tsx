@@ -450,6 +450,15 @@ function CheckoutInner() {
         }
       }
       const fd = new FormData(formRef.current);
+      // Read Meta cookies for CAPI matching
+      const readCookie = (name: string) => {
+        try {
+          const v = (`; ${document.cookie}`).split(`; ${name}=`).pop()?.split(';')[0];
+          return v || null;
+        } catch { return null; }
+      };
+      const fbp = readCookie('_fbp');
+      const fbc = readCookie('_fbc');
       const payload = {
         customer: {
           name: name0,
@@ -466,6 +475,7 @@ function CheckoutInner() {
           province_code: province0 || undefined,
           city: city0 || undefined,
         },
+        fbMeta: { fbp: fbp || null, fbc: fbc || null },
       };
       const res = await fetch("/api/orders/create", {
         method: "POST",
