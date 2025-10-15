@@ -9,7 +9,7 @@ export async function GET() {
   // Load active products
   const { data: products } = await supabase
     .from('products')
-    .select('id, slug, name, description_en, active')
+    .select('id, slug, name, description_en, active, google_product_category, product_type')
     .eq('active', true);
 
   const items: Array<{
@@ -20,6 +20,9 @@ export async function GET() {
     image: string | null;
     price: number | null;
     availability: 'in stock' | 'out of stock';
+    additionalImages: string[];
+    productType: string | null;
+    googleCategory: string | null;
   }> = [];
 
   for (const p of products || []) {
@@ -32,7 +35,9 @@ export async function GET() {
       .select('type, url, sort')
       .eq('product_id', pid)
       .order('sort', { ascending: true });
-    const firstImg = (media || []).find((m: any) => m.type === 'image');
+    const images = (media || []).filter((m: any) => m.type === 'image');
+    const firstImg = images[0];
+    const additionalImages = images.slice(1, 11).map((m: any) => m.url as string);
 
     // Lowest active variant price
     const { data: variants } = await supabase
@@ -62,6 +67,9 @@ export async function GET() {
       image: firstImg?.url || null,
       price: Number.isFinite(lowest) ? lowest : null,
       availability,
+      additionalImages,
+      productType: (p as any).product_type ?? null,
+      googleCategory: (p as any).google_product_category ?? null,
     });
   }
 
@@ -74,11 +82,14 @@ export async function GET() {
       <description>${esc((it.description || '').slice(0, 5000))}</description>
       <link>${esc(`${site}/lp/${it.slug}`)}</link>
       ${it.image ? `<g:image_link>${esc(it.image)}</g:image_link>` : ''}
+      ${Array.isArray(it.additionalImages) && it.additionalImages.length ? it.additionalImages.map((u: string) => `<g:additional_image_link>${esc(u)}</g:additional_image_link>`).join('\n      ') : ''}
       <g:availability>${it.availability}</g:availability>
       ${it.price != null ? `<g:price>${Number(it.price).toFixed(2)} PKR</g:price>` : ''}
       <g:condition>new</g:condition>
       <g:brand>Afal</g:brand>
       <g:identifier_exists>false</g:identifier_exists>
+      <g:product_type>${esc(it.productType || 'Electronics > Trackers')}</g:product_type>
+      <g:google_product_category>${esc(it.googleCategory || 'Electronics > Trackers')}</g:google_product_category>
     </item>`).join('\n');
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
