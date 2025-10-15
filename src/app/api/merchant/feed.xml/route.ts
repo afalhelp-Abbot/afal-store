@@ -75,9 +75,10 @@ export async function GET() {
       <link>${esc(`${site}/lp/${it.slug}`)}</link>
       ${it.image ? `<g:image_link>${esc(it.image)}</g:image_link>` : ''}
       <g:availability>${it.availability}</g:availability>
-      ${it.price != null ? `<g:price>${Number(it.price).toFixed(0)} PKR</g:price>` : ''}
+      ${it.price != null ? `<g:price>${Number(it.price).toFixed(2)} PKR</g:price>` : ''}
       <g:condition>new</g:condition>
       <g:brand>Afal</g:brand>
+      <g:identifier_exists>false</g:identifier_exists>
     </item>`).join('\n');
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
