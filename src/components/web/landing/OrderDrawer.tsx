@@ -93,8 +93,6 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
     }
   };
 
-  if (!open) return null;
-
   // Live subtotal (PKR) for quantities entered in this drawer
   const subtotal: number = React.useMemo(() => {
     let sum = 0;
@@ -106,6 +104,8 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
     }
     return sum;
   }, [qtyMap, matrix]);
+
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50">
