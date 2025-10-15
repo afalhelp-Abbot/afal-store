@@ -95,6 +95,18 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
 
   if (!open) return null;
 
+  // Live subtotal (PKR) for quantities entered in this drawer
+  const subtotal: number = React.useMemo(() => {
+    let sum = 0;
+    for (const [k, q] of Object.entries(qtyMap)) {
+      const qty = Number(q || 0);
+      if (qty <= 0) continue;
+      const price = Number(matrix[k]?.price || 0);
+      sum += qty * price;
+    }
+    return sum;
+  }, [qtyMap, matrix]);
+
   return (
     <div className="fixed inset-0 z-50">
       {/* Backdrop */}
@@ -285,13 +297,19 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
               </div>
             )}
 
+            {/* Subtotal */}
+            <div className="flex items-center justify-between border-t pt-3">
+              <div className="text-sm text-gray-600">Subtotal</div>
+              <div className="text-lg font-semibold">PKR {Number(subtotal || 0).toLocaleString()}</div>
+            </div>
+
             {/* No customer info here. Proceed to checkout to fill address & payment. */}
             <button
               type="submit"
               disabled={loading}
               className={`rounded px-4 py-2 text-white ${loading ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
             >
-              {loading ? '...' : 'Proceed to Checkout'}
+              {loading ? '...' : `Proceed to Checkout${subtotal > 0 ? ` · PKR ${Number(subtotal).toLocaleString()}` : ''}`}
             </button>
             <button type="button" onClick={onClose} disabled={loading} className="px-4 py-2 rounded border">
               Cancel
