@@ -25,6 +25,14 @@ Expected payload (JSON):
 
 export async function POST(req: Request) {
   try {
+    // Debug: confirm env visibility at runtime (safe: does not print secret values)
+    try {
+      console.log('[orders/create] env check', {
+        HAS_RESEND_KEY: !!process.env.RESEND_API_KEY,
+        RESEND_FROM: process.env.RESEND_FROM,
+        OWNER_EMAIL: process.env.OWNER_EMAIL,
+      });
+    } catch {}
     // Use privileged client (service role) on the server to bypass RLS during order creation
     // Never expose SUPABASE_SERVICE_ROLE_KEY to the browser.
     const supabase = getSupabaseServiceClient();
@@ -52,9 +60,12 @@ export async function POST(req: Request) {
     // Try to send an email notification (non-blocking)
     try {
       const RESEND_API_KEY = process.env.RESEND_API_KEY;
-      if (RESEND_API_KEY) {
-        const from = process.env.RESEND_FROM || 'Afal Store <onboarding@resend.dev>';
+      const FROM = process.env.RESEND_FROM || 'Afal Store <onboarding@resend.dev>';
+      const OWNER = process.env.OWNER_EMAIL || 'afalhelp@gmail.com';
 
+      if (!RESEND_API_KEY) {
+        console.warn('[orders/create] RESEND_API_KEY missing; skipping email send');
+      } else {
         // Pull line details for a proper summary
         const { data: lines } = await getSupabaseServiceClient()
           .from('order_lines')
@@ -114,62 +125,47 @@ export async function POST(req: Request) {
             <p style="margin-top:16px;font-family:Arial,Helvetica,sans-serif;color:#6b7280;font-size:14px;">If you have any questions, simply reply to this email.</p>
           </div>`;
 
-        const adminSubject = `New order placed: ${orderId}`;
-        const adminText = `New order ${orderId} by ${customer.name}, phone ${customer.phone}. Total: PKR ${total}.`;
-        const adminHtml = htmlBase('New order received');
-
-        console.log('[orders/create] Sending email via Resend to afalhelp@gmail.com with from=%s', from);
-        const emailRes = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${RESEND_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            from,
-            to: ['afalhelp@gmail.com'],
-            subject: adminSubject,
-            text: adminText,
-            html: adminHtml,
-          }),
-        });
-        if (!emailRes.ok) {
-          const body = await emailRes.text();
-          console.error('[orders/create] Resend error (admin)', emailRes.status, body);
-        } else {
-          try {
-            const okJson = await emailRes.json();
-            console.log('[orders/create] Resend accepted (admin):', okJson);
-          } catch { console.log('[orders/create] Resend accepted (admin)'); }
-          // Customer confirmation if email provided
-          if (customer.email) {
-            const customerSubject = `Thank you for your order (${orderId})`;
-            const customerText = `Thank you for your order. Your order ID is ${orderId}. Total: PKR ${total}.`;
-            const customerHtml = htmlBase('Thank you for your order');
-            const custRes = await fetch('https://api.resend.com/emails', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${RESEND_API_KEY}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                from,
-                to: [String(customer.email)],
-                subject: customerSubject,
-                text: customerText,
-                html: customerHtml,
-              }),
-            });
-            if (!custRes.ok) {
-              const body = await custRes.text();
-              console.error('[orders/create] Resend error (customer)', custRes.status, body);
-            } else {
-              try {
-                const okJson2 = await custRes.json();
-                console.log('[orders/create] Resend accepted (customer):', okJson2);
-              } catch { console.log('[orders/create] Resend accepted (customer)'); }
-            }
+        const sendEmailResend = async (payload: { to: string[]; subject: string; text: string; html: string }) => {
+          const res = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${RESEND_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              from: FROM,
+              to: payload.to,
+              subject: payload.subject,
+              text: payload.text,
+              html: payload.html,
+              reply_to: customer.email ? [String(customer.email)] : undefined,
+            }),
+          });
+          const text = await res.text();
+          if (!res.ok) {
+            console.error('[orders/create] Resend error', res.status, text);
+            return { ok: false, status: res.status, body: text } as const;
           }
+          console.log('[orders/create] Resend accepted', text);
+          return { ok: true } as const;
+        };
+
+        // Send admin email
+        await sendEmailResend({
+          to: [OWNER],
+          subject: `New order placed: ${orderId}`,
+          text: `New order ${orderId} by ${customer.name}, phone ${customer.phone}. Total: PKR ${total}.`,
+          html: htmlBase('New order received'),
+        });
+
+        // Customer confirmation
+        if (customer.email) {
+          await sendEmailResend({
+            to: [String(customer.email)],
+            subject: `Thank you for your order (${orderId})`,
+            text: `Thank you for your order. Your order ID is ${orderId}. Total: PKR ${total}.`,
+            html: htmlBase('Thank you for your order'),
+          });
         }
       }
     } catch (e) {

@@ -253,6 +253,32 @@ export default async function LandingPage({ params }: { params: { slug: string }
 
   const { product, mediaItems, colors, models, packages, sizes, matrix, specs, sections, colorThumbs, variants, pixel } = data as any;
 
+  // Build Product JSON-LD for SEO
+  const site = 'https://afalstore.com';
+  const canonical = `${site}/lp/${product.slug}`;
+  const images = mediaItems.filter((m:any)=>m.type==='image').map((m:any)=>m.src);
+  const lowest = (variants||[]).reduce((min:number, v:any)=> Math.min(min, Number(v.price||Infinity)), Infinity);
+  const offerPrice = Number.isFinite(lowest) ? lowest : undefined;
+  const anyAvail = Object.values(matrix||{}).some((m:any)=> (m?.availability||0) > 0);
+  const availability = anyAvail ? 'http://schema.org/InStock' : 'http://schema.org/OutOfStock';
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: product.name,
+    description: product.description_en || undefined,
+    image: images.slice(0,4),
+    sku: (variants?.[0]?.sku) || undefined,
+    brand: { '@type': 'Brand', name: 'Afal' },
+    offers: offerPrice ? {
+      '@type': 'Offer',
+      url: canonical,
+      priceCurrency: 'PKR',
+      price: Number(offerPrice.toFixed(0)),
+      availability,
+      itemCondition: 'https://schema.org/NewCondition'
+    } : undefined,
+  };
+
   return (
     <div className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-24 items-start">
       <UTMCapture />
@@ -438,6 +464,8 @@ export default async function LandingPage({ params }: { params: { slug: string }
       </aside>
       {/* Sentinel to hide floating CTA near page end */}
       <div id="lp-bottom-sentinel" className="h-1"></div>
+      {/* JSON-LD: Product */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
     </div>
   );
 }
@@ -446,17 +474,31 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   const supabase = getSupabaseServerClient();
   const { data: product } = await supabase
     .from('products')
-    .select('name, description_en, active')
+    .select('name, description_en, active, slug')
     .eq('slug', params.slug)
     .eq('active', true)
     .maybeSingle();
   const title = product?.name ? `${product.name} – Afal Store` : 'Afal Store';
   const description = (product as any)?.description_en || 'Premium Android Tag compatible with Google Find My Device. Waterproof, long battery, compact.';
-  const ogImage = '/images/2c6e7458128b076e82bd99f52ab130c8.avif';
+  // Prefer first product image as OG image
+  let ogImage = '/images/2c6e7458128b076e82bd99f52ab130c8.avif';
+  if (product?.slug) {
+    const { data: media } = await supabase
+      .from('product_media')
+      .select('url, type, sort')
+      .eq('product_id', (await supabase.from('products').select('id').eq('slug', product.slug).maybeSingle()).data?.id)
+      .order('sort', { ascending: true });
+    const firstImg = (media||[]).find((m:any)=>m.type==='image');
+    if (firstImg?.url) ogImage = firstImg.url as string;
+  }
+  const site = 'https://afalstore.com';
+  const canonical = product?.slug ? `${site}/lp/${product.slug}` : site;
   return {
     title,
     description,
+    alternates: { canonical },
     openGraph: {
+      url: canonical,
       title,
       description,
       images: [ogImage],

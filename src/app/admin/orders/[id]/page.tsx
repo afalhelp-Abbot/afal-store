@@ -139,12 +139,75 @@ async function updateStatusAction(formData: FormData) {
   }
 
   const supabase = getSupabaseServerClient();
-  const { error } = await supabase
+
+  // Fetch current status and items to compute inventory deltas
+  const { data: existing, error: fetchErr } = await supabase
+    .from('orders')
+    .select('id, status')
+    .eq('id', id)
+    .maybeSingle();
+  if (fetchErr) return { ok: false, message: fetchErr.message } as const;
+  const fromStatus = String(existing?.status || 'pending');
+
+  // If no change, do nothing
+  if (fromStatus === status) {
+    return { ok: true } as const;
+  }
+
+  const { data: items, error: itemsErr } = await supabase
+    .from('order_items')
+    .select('variant_id, qty')
+    .eq('order_id', id);
+  if (itemsErr) return { ok: false, message: itemsErr.message } as const;
+
+  // Update order status first
+  const { error: updErr } = await supabase
     .from('orders')
     .update({ status })
     .eq('id', id);
-  if (error) {
-    return { ok: false, message: error.message } as const;
+  if (updErr) return { ok: false, message: updErr.message } as const;
+
+  // Compute inventory adjustments based on transition
+  // Rules:
+  // - pending -> cancelled: reserved -= qty
+  // - pending/packed -> shipped: reserved -= qty, on_hand -= qty
+  // - cancelled -> pending: reserved += qty (re-activate)
+  // Other transitions: no-op
+  const from = fromStatus.toLowerCase();
+  const to = status.toLowerCase();
+
+  const shouldUnreserve = (from === 'pending' && to === 'cancelled') || (from === 'pending' && to === 'shipped') || (from === 'packed' && to === 'shipped');
+  const shouldShip = (to === 'shipped') && (from === 'pending' || from === 'packed');
+  const shouldReReserve = (from === 'cancelled' && to === 'pending');
+
+  for (const it of (items || [])) {
+    const vid = (it as any).variant_id as string;
+    const qty = Number((it as any).qty || 0);
+    if (!vid || !qty) continue;
+
+    // Read current inventory row
+    const { data: cur } = await supabase
+      .from('inventory')
+      .select('stock_on_hand, reserved')
+      .eq('variant_id', vid)
+      .maybeSingle();
+    let on = Number(cur?.stock_on_hand || 0);
+    let res = Number(cur?.reserved || 0);
+
+    if (shouldUnreserve) {
+      res = Math.max(0, res - qty);
+    }
+    if (shouldReReserve) {
+      res = res + qty;
+    }
+    if (shouldShip) {
+      // Reduce physical stock; keep non-negative and not below reserved
+      on = Math.max(res, on - qty);
+    }
+
+    await supabase
+      .from('inventory')
+      .upsert({ variant_id: vid, stock_on_hand: on, reserved: res }, { onConflict: 'variant_id' });
   }
 
   revalidatePath(`/admin/orders/${id}`);

@@ -54,6 +54,7 @@ function CheckoutInner() {
   const [provinceCode, setProvinceCode] = useState<string>("");
   const [city, setCity] = useState<string>("");
   const [productId, setProductId] = useState<string | null>(null);
+  const [productSlug, setProductSlug] = useState<string | null>(null);
   const [shippingAmount, setShippingAmount] = useState<number | null>(null);
   const [shippingLoading, setShippingLoading] = useState<boolean>(false);
   // Meta Pixel config (per product)
@@ -157,7 +158,7 @@ function CheckoutInner() {
               .order("sort", { ascending: true }),
             supabaseBrowser
               .from("products")
-              .select("id, logo_url")
+              .select("id, logo_url, slug")
               .in("id", productIds),
           ]);
           setProductId(productIds[0] as string);
@@ -176,6 +177,8 @@ function CheckoutInner() {
             const pid = (p as any).id as string;
             const l = (p as any).logo_url as string | null;
             if (l) logoMap[pid] = l;
+            // capture slug for the first product (LP back link)
+            if (!productSlug) setProductSlug((p as any).slug || null);
           }
           setLogoByProduct(logoMap);
         }
@@ -549,7 +552,7 @@ function CheckoutInner() {
                 <p className="">Order ID: <span className="font-semibold">#{success.order_id}</span></p>
                 <p className="mt-1 text-sm text-green-800">We will contact you shortly to confirm and arrange delivery.</p>
                 <div className="mt-4 flex gap-3">
-                  <Link href="/" className="inline-block bg-black text-white px-4 py-2 rounded">Continue Shopping</Link>
+                  <Link href={productSlug ? `/lp/${productSlug}` : "/"} className="inline-block bg-black text-white px-4 py-2 rounded">Continue Shopping</Link>
                 </div>
               </div>
             </div>

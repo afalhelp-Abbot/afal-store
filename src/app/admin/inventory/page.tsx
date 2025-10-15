@@ -2,9 +2,26 @@ import { requireAdmin } from '@/lib/auth';
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
 import RowEditor from './row-editor';
 
-async function getRows() {
+async function getRows(productId?: string) {
   const supabase = getSupabaseServerClient();
-  // Prefer the view if present; otherwise join tables
+  if (productId && productId !== 'all') {
+    // Find SKUs for the selected product, then filter the view by those SKUs
+    const { data: skusData, error: skErr } = await supabase
+      .from('variants')
+      .select('sku')
+      .eq('product_id', productId);
+    if (skErr) throw skErr;
+    const skus = (skusData ?? []).map((v: any) => v.sku).filter(Boolean);
+    if (skus.length === 0) return [] as any[];
+    const { data, error } = await supabase
+      .from('inventory_overview')
+      .select('*')
+      .in('sku', skus)
+      .order('sku');
+    if (error) throw error;
+    return data ?? [];
+  }
+  // Default: return all
   const { data, error } = await supabase
     .from('inventory_overview')
     .select('*')
@@ -13,9 +30,15 @@ async function getRows() {
   return data ?? [];
 }
 
-export default async function InventoryPage() {
+export default async function InventoryPage({ searchParams }: { searchParams?: { productId?: string } }) {
   await requireAdmin();
-  const rows = await getRows();
+  const currentProduct = searchParams?.productId ?? 'all';
+  const rows = await getRows(currentProduct);
+  const supabase = getSupabaseServerClient();
+  const { data: products } = await supabase
+    .from('products')
+    .select('id, name')
+    .order('created_at', { ascending: false });
 
   return (
     <div className="space-y-6">
@@ -30,6 +53,18 @@ export default async function InventoryPage() {
           <li>All actions require admin auth and log changes in Supabase (via `adjust_stock`).</li>
         </ul>
       </div>
+      <form className="flex flex-wrap items-end gap-3 border rounded p-4" action="/admin/inventory" method="get">
+        <div>
+          <label className="block text-sm">Product</label>
+          <select name="productId" defaultValue={currentProduct} className="border rounded px-3 py-2 min-w-[220px]">
+            <option value="all">All products</option>
+            {(products ?? []).map((p: any) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+        <button className="bg-black text-white rounded px-4 py-2">Apply</button>
+      </form>
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead>

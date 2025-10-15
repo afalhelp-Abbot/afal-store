@@ -1,6 +1,10 @@
 import Link from 'next/link';
 import { ReactNode } from 'react';
 
+export const metadata = {
+  robots: { index: false, follow: false },
+} as const;
+
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen grid grid-cols-12">

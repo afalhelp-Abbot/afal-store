@@ -847,6 +847,27 @@ export default function EditProductPage() {
     setVariants((prev) => prev.map((v) => (v.id === id ? { ...v, on_hand: onHand } : v)));
   };
 
+  const adjustOnHandDelta = async (id: string, delta: number) => {
+    const { data: invRow } = await supabaseBrowser
+      .from('inventory')
+      .select('variant_id, stock_on_hand, reserved')
+      .eq('variant_id', id)
+      .maybeSingle();
+    const currentOn = Number((invRow as any)?.stock_on_hand || 0);
+    const reserved = Number((invRow as any)?.reserved || 0);
+    const nextOn = currentOn + Number(delta || 0);
+    if (nextOn < reserved) {
+      alert('Cannot reduce below Reserved. Adjust or release reserved units first.');
+      return;
+    }
+    if (invRow) {
+      await supabaseBrowser.from('inventory').update({ stock_on_hand: nextOn }).eq('variant_id', id);
+    } else {
+      await supabaseBrowser.from('inventory').insert({ variant_id: id, stock_on_hand: nextOn, reserved: 0 });
+    }
+    setVariants((prev) => prev.map((v) => (v.id === id ? { ...v, on_hand: nextOn } : v)));
+  };
+
   const nextSort = useMemo(() => (media.length ? Math.max(...media.map((m) => m.sort || 0)) + 1 : 0), [media]);
 
   const uploadToBucket = async (file: File): Promise<string> => {
@@ -1422,6 +1443,9 @@ export default function EditProductPage() {
               </div>
             )}
             <div className="overflow-auto">
+              <div className="mb-3 text-sm p-2 rounded border bg-amber-50">
+                Inventory is the source of truth. Edits here update the same counts shown on the Inventory page. Available = On hand − Reserved.
+              </div>
               <table className="w-full text-sm min-w-[640px]">
                 <thead>
                   <tr className="text-left border-b">
@@ -1432,6 +1456,7 @@ export default function EditProductPage() {
                     <th className="py-2 pr-3">Package</th>
                     <th className="py-2 pr-3">Price</th>
                     <th className="py-2 pr-3">On Hand</th>
+                    <th className="py-2 pr-3">Adjust (±)</th>
                     <th className="py-2 pr-3">Active</th>
                     <th className="py-2 pr-3">Actions</th>
                   </tr>
@@ -1486,6 +1511,24 @@ export default function EditProductPage() {
                       </td>
                       <td className="py-2 pr-3">
                         <input id={`row-onhand-${v.id}`} type="number" defaultValue={v.on_hand ?? 0} onChange={()=>setVariantsDirtyFlag(true)} onBlur={(e)=>setOnHand(v.id, Number(e.target.value))} className="border rounded px-2 py-1 w-24" />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <div className="flex items-center gap-2">
+                          <input id={`row-adjust-${v.id}`} type="number" className="border rounded px-2 py-1 w-20" placeholder="+/-" />
+                          <button className="px-2 py-1 rounded border text-xs" onClick={()=>{
+                            const el = document.getElementById(`row-adjust-${v.id}`) as HTMLInputElement | null;
+                            const val = Number(el?.value || '0'); if (!val) return;
+                            adjustOnHandDelta(v.id, val);
+                            if (el) el.value = '';
+                          }}>Receive +</button>
+                          <button className="px-2 py-1 rounded border text-xs" onClick={()=>{
+                            const el = document.getElementById(`row-adjust-${v.id}`) as HTMLInputElement | null;
+                            const val = Number(el?.value || '0'); if (!val) return;
+                            if (!confirm('Scrap this quantity?')) return;
+                            adjustOnHandDelta(v.id, -Math.abs(val));
+                            if (el) el.value = '';
+                          }}>Scrap −</button>
+                        </div>
                       </td>
                       <td className="py-2 pr-3">
                         <input id={`row-active-${v.id}`} type="checkbox" defaultChecked={v.active} onChange={(e)=>{ setVariantsDirtyFlag(true); updateVariant(v.id,{ active: e.target.checked }); }} />
