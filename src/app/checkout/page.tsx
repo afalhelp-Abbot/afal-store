@@ -691,6 +691,12 @@ function CheckoutInner() {
                 {error}
               </div>
             )}
+            <div className="text-xs text-gray-600 bg-yellow-50 border border-yellow-200 rounded p-3">
+              Returns are accepted only for product defects within <span className="font-medium">7 days of receiving</span>, with original packaging intact. Our support team will inspect and, once approved, refunds are issued within <span className="font-medium">14 days</span> via Easypaisa. See full policy: <a href="/return-policy" className="text-blue-600 hover:underline">Return Policy</a>.
+            </div>
+            <div className="text-sm text-gray-600">
+              By placing the order you agree to our <a href="/return-policy" className="text-blue-600 hover:underline">Return Policy</a>.
+            </div>
             <div>
               <label className="block text-sm">Name</label>
               <input
