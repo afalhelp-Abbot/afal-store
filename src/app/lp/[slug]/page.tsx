@@ -273,7 +273,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
       '@type': 'Offer',
       url: canonical,
       priceCurrency: 'PKR',
-      price: Number(offerPrice.toFixed(0)),
+      price: Number(offerPrice.toFixed(2)),
       availability,
       itemCondition: 'https://schema.org/NewCondition'
     } : undefined,
