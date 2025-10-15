@@ -6,6 +6,7 @@ import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 import Link from "next/link";
+import { ensurePixel, track } from "@/lib/pixel";
 
 type CartItem = { variant_id: string; qty: number };
 
@@ -55,6 +56,11 @@ function CheckoutInner() {
   const [productId, setProductId] = useState<string | null>(null);
   const [shippingAmount, setShippingAmount] = useState<number | null>(null);
   const [shippingLoading, setShippingLoading] = useState<boolean>(false);
+  // Meta Pixel config (per product)
+  const [pixelCfg, setPixelCfg] = useState<null | { enabled: boolean; pixel_id: string | null; content_id_source: 'sku' | 'variant_id'; events: any }>(null);
+  const firedInitRef = useRef(false);
+  const firedAddPaymentRef = useRef(false);
+  const firedPurchaseRef = useRef(false);
 
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -253,6 +259,28 @@ function CheckoutInner() {
     })();
   }, [enableCityRates, provinceCode]);
 
+  // Load per-product Meta Pixel config
+  useEffect(() => {
+    (async () => {
+      if (!productId) { setPixelCfg(null); return; }
+      const { data: px } = await supabaseBrowser
+        .from('product_pixel')
+        .select('enabled, pixel_id, content_id_source, events')
+        .eq('product_id', productId)
+        .maybeSingle();
+      if (px) {
+        setPixelCfg({
+          enabled: !!(px as any).enabled,
+          pixel_id: (px as any).pixel_id || null,
+          content_id_source: ((px as any).content_id_source === 'variant_id' ? 'variant_id' : 'sku'),
+          events: (px as any).events || {},
+        });
+      } else {
+        setPixelCfg(null);
+      }
+    })();
+  }, [productId]);
+
   // Subtotal of items
   const subtotal = useMemo(() => {
     return lines.reduce((acc, ln) => acc + (variants[ln.variant_id]?.price || 0) * ln.qty, 0);
@@ -262,6 +290,29 @@ function CheckoutInner() {
   const totalWeightKg = useMemo(() => {
     return lines.reduce((acc, ln) => acc + ((variants[ln.variant_id]?.weight_kg || 0) * ln.qty), 0);
   }, [lines, variants]);
+
+  // Fire InitiateCheckout once when items + pixel config ready
+  useEffect(() => {
+    if (success) return; // do not fire after success
+    if (!pixelCfg || !pixelCfg.enabled || !pixelCfg.pixel_id) return;
+    if (pixelCfg.events && pixelCfg.events.initiate_checkout === false) return;
+    if (firedInitRef.current) return;
+    if (!lines.length) return;
+    const ok = ensurePixel(pixelCfg.pixel_id);
+    if (!ok) return;
+    const build = () => {
+      const contents = lines.map((ln) => ({
+        id: (pixelCfg.content_id_source === 'variant_id' ? ln.variant_id : (variants[ln.variant_id]?.sku || ln.variant_id)),
+        quantity: ln.qty,
+        item_price: Number(variants[ln.variant_id]?.price || 0),
+      }));
+      const value = lines.reduce((s, ln) => s + (Number(variants[ln.variant_id]?.price || 0) * ln.qty), 0);
+      return { contents, value };
+    };
+    const { contents, value } = build();
+    track('InitiateCheckout', { contents, value, currency: 'PKR', content_type: 'product' });
+    firedInitRef.current = true;
+  }, [pixelCfg, lines, variants, success]);
 
   // Call shipping quote when province/city/qty changes and we have productId
   useEffect(() => {
@@ -342,6 +393,28 @@ function CheckoutInner() {
       if (!city0 || !address0 || !province0) {
         throw new Error("City, Province, and Address are required");
       }
+      // Ensure shipping has been calculated (prevents showing 0 in success panel)
+      if (shippingAmount == null && !shippingLoading) {
+        setError('Please select province (and city if applicable) and wait for shipping to calculate.');
+        setPlacing(false);
+        return;
+      }
+
+      // Fire AddPaymentInfo once when user submits
+      if (!firedAddPaymentRef.current && pixelCfg && pixelCfg.enabled && pixelCfg.pixel_id && !(pixelCfg.events && pixelCfg.events.add_payment_info === false)) {
+        const okPx = ensurePixel(pixelCfg.pixel_id);
+        if (okPx) {
+          const contents = lines.map((ln) => ({
+            id: (pixelCfg.content_id_source === 'variant_id' ? ln.variant_id : (variants[ln.variant_id]?.sku || ln.variant_id)),
+            quantity: ln.qty,
+            item_price: Number(variants[ln.variant_id]?.price || 0),
+          }));
+          const value = lines.reduce((s, ln) => s + (Number(variants[ln.variant_id]?.price || 0) * ln.qty), 0);
+          track('AddPaymentInfo', { contents, value, currency: 'PKR', content_type: 'product' });
+          firedAddPaymentRef.current = true;
+        }
+      }
+
       // Validate availability first
       const ids = lines.map((x) => x.variant_id);
       if (ids.length) {
@@ -385,6 +458,11 @@ function CheckoutInner() {
         },
         items: lines,
         payment: { method: "COD" as const },
+        shipping: {
+          amount: Number(shippingAmount || 0),
+          province_code: province0 || undefined,
+          city: city0 || undefined,
+        },
       };
       const res = await fetch("/api/orders/create", {
         method: "POST",
@@ -397,8 +475,23 @@ function CheckoutInner() {
       setSuccess({ order_id: data.order_id });
       // capture totals before clearing
       const s = Number(subtotal) || 0;
-      const ship = 0;
+      const ship = Number(shippingAmount || 0);
       setSuccessTotals({ subtotal: s, shipping: ship, total: s + ship });
+
+      // Fire Purchase (exclude shipping) after success
+      if (!firedPurchaseRef.current && pixelCfg && pixelCfg.enabled && pixelCfg.pixel_id && !(pixelCfg.events && pixelCfg.events.purchase === false)) {
+        const okPx2 = ensurePixel(pixelCfg.pixel_id);
+        if (okPx2) {
+          const contents = lines.map((ln) => ({
+            id: (pixelCfg.content_id_source === 'variant_id' ? ln.variant_id : (variants[ln.variant_id]?.sku || ln.variant_id)),
+            quantity: ln.qty,
+            item_price: Number(variants[ln.variant_id]?.price || 0),
+          }));
+          const value = Number(subtotal) || 0; // exclude shipping per requirement
+          track('Purchase', { contents, value, currency: 'PKR', content_type: 'product' });
+          firedPurchaseRef.current = true;
+        }
+      }
       replaceUrlWithLines([]);
       setLines([]);
       try { formRef.current?.reset(); } catch {}

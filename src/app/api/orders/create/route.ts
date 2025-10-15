@@ -63,7 +63,7 @@ export async function POST(req: Request) {
 
         const lineRows = (lines as any[]) || [];
         const subtotal = lineRows.reduce((s, r) => s + Number(r.line_total || 0), 0);
-        const shipping = 0;
+        const shipping = Number((body?.shipping?.amount as any) || 0);
         const total = subtotal + shipping;
 
         const itemsHtml = lineRows.map(r => `
@@ -103,7 +103,7 @@ export async function POST(req: Request) {
                 </tr>
                 <tr>
                   <td colspan="3" style="padding:8px;text-align:right;font-family:Arial,Helvetica,sans-serif;">Shipping</td>
-                  <td style="padding:8px;text-align:right;font-family:Arial,Helvetica,sans-serif;">PKR ${shipping.toLocaleString()}</td>
+                  <td style="padding:8px;text-align:right;font-family:Arial,Helvetica,sans-serif;">PKR ${Number(shipping).toLocaleString()}</td>
                 </tr>
                 <tr>
                   <td colspan="3" style="padding:8px;text-align:right;font-weight:bold;font-family:Arial,Helvetica,sans-serif;">Total</td>

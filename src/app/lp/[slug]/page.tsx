@@ -3,6 +3,7 @@ import BuyPanel from '@/components/web/landing/BuyPanel';
 import Image from 'next/image';
 import ImageGallery, { type MediaItem } from '@/components/web/product/ImageGallery';
 import UTMCapture from '@/components/web/landing/UTMCapture';
+import LPViewPixel from '@/components/web/pixel/LPViewPixel';
 
 // Render helper: if the string looks like HTML, inject as HTML. Otherwise, render paragraphs
 // and preserve single line breaks. Urdu is rendered RTL with the Urdu font class.
@@ -232,6 +233,15 @@ async function fetchLpData(slug: string) {
     colorThumbs,
     specs: specs ?? [],
     sections: sections ?? [],
+    // load per-product meta pixel config
+    pixel: (await (async ()=>{
+      const { data: px } = await supabase
+        .from('product_pixel')
+        .select('enabled, pixel_id, content_id_source, events')
+        .eq('product_id', product.id)
+        .maybeSingle();
+      return px || null;
+    })()),
   } as const;
 }
 
@@ -241,11 +251,23 @@ export default async function LandingPage({ params }: { params: { slug: string }
     return <div className="p-6">Landing page not found.</div>;
   }
 
-  const { product, mediaItems, colors, models, packages, sizes, matrix, specs, sections, colorThumbs } = data as any;
+  const { product, mediaItems, colors, models, packages, sizes, matrix, specs, sections, colorThumbs, variants, pixel } = data as any;
 
   return (
     <div className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-24 items-start">
       <UTMCapture />
+      {/* Meta Pixel: ViewContent */}
+      <LPViewPixel
+        productId={product.id}
+        productName={product.name}
+        variants={(variants||[]).map((v:any)=>({ id: v.id, sku: v.sku, price: v.price }))}
+        config={pixel ? {
+          enabled: !!pixel.enabled,
+          pixel_id: pixel.pixel_id || null,
+          content_id_source: (pixel.content_id_source === 'variant_id' ? 'variant_id' : 'sku'),
+          events: pixel.events || { view_content: true },
+        } : null}
+      />
       {/* Page title spans both columns on desktop so aside aligns with gallery, not the title */}
       <header className="space-y-2 lg:col-span-2 mb-3 lg:mb-4">
         <div className="flex flex-col items-center text-center gap-2 lg:flex-row lg:items-center lg:text-left lg:gap-4">
