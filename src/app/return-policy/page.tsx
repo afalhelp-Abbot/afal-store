@@ -1,6 +1,5 @@
 export default function ReturnPolicyPage() {
   const email = 'afalhelp@gmail.com';
-  const whatsapp = '+923313821012';
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-6">
       <h1 className="text-2xl font-semibold">Return & Refund Policy</h1>
@@ -18,7 +17,7 @@ export default function ReturnPolicyPage() {
       <section className="space-y-2">
         <h2 className="text-xl font-medium">How to request a return</h2>
         <ol className="list-decimal pl-6 space-y-1 text-gray-700">
-          <li>Email us at <a className="text-blue-600 hover:underline" href={`mailto:${email}`}>{email}</a> or WhatsApp at {whatsapp} with your order ID, issue description, and photos/video if possible.</li>
+          <li>Email us at <a className="text-blue-600 hover:underline" href={`mailto:${email}`}>{email}</a> with your order ID, issue description, and photos/video if possible.</li>
           <li>Our support team will <span className="font-medium">inspect and verify</span> the claim. We may request additional details.</li>
           <li>Once approved, we will arrange a pickup or provide return instructions. For approved defect claims, <span className="font-medium">we cover return shipping</span>.</li>
         </ol>
