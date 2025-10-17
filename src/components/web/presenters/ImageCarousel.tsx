@@ -57,7 +57,7 @@ export default function ImageCarousel({ images, interval = 5000 }: ImageCarousel
             src={image.src}
             alt={image.alt}
             fill
-            className="object-contain p-4 transition-transform duration-500 group-hover:scale-105"
+            className="object-contain p-4 transition-transform duration-500 md:hover:scale-105"
             priority={index === 0}
           />
         </div>

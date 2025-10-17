@@ -19,6 +19,22 @@ export default function ImageGallery({ items, className }: Props) {
   const mainRef = useRef<HTMLDivElement | null>(null);
   const thumbsRef = useRef<HTMLDivElement | null>(null);
   const [autoPosters, setAutoPosters] = useState<Record<number, string>>({});
+  const [canHover, setCanHover] = useState(false);
+
+  useEffect(() => {
+    // Enable zoom only for devices that support hover and have a fine pointer (e.g., mouse/trackpad)
+    const mq = window.matchMedia('(hover: hover) and (pointer: fine)');
+    const update = () => setCanHover(mq.matches);
+    update();
+    if (typeof mq.addEventListener === 'function') {
+      mq.addEventListener('change', update);
+      return () => mq.removeEventListener('change', update);
+    } else {
+      // Safari fallback
+      mq.addListener?.(update);
+      return () => mq.removeListener?.(update);
+    }
+  }, []);
 
   const safeIndex = useMemo(() => Math.min(Math.max(index, 0), Math.max(0, items.length - 1)), [index, items.length]);
   const preferredInitialIndex = useMemo(() => {
@@ -163,14 +179,6 @@ export default function ImageGallery({ items, className }: Props) {
         <div
           ref={mainRef}
           className="relative w-full md:w-[75%] mx-auto aspect-[1/1] md:aspect-[1/1] bg-white rounded overflow-hidden group shadow-sm"
-          onMouseEnter={() => setIsZoom(true)}
-          onMouseLeave={() => setIsZoom(false)}
-          onMouseMove={(e) => {
-            const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-            const x = ((e.clientX - rect.left) / rect.width) * 100;
-            const y = ((e.clientY - rect.top) / rect.height) * 100;
-            setOrigin({ x, y });
-          }}
         >
           {items[safeIndex].type === "image" ? (
             <>
@@ -181,6 +189,15 @@ export default function ImageGallery({ items, className }: Props) {
                 sizes="(max-width: 768px) 100vw, 50vw"
                 className="object-contain transition-transform duration-150"
                 style={{ transformOrigin: `${origin.x}% ${origin.y}%`, transform: isZoom ? "scale(1.8)" : "scale(1)" }}
+                onMouseEnter={() => { if (canHover) setIsZoom(true); }}
+                onMouseLeave={() => { if (canHover) setIsZoom(false); }}
+                onMouseMove={(e) => {
+                  if (!canHover) return;
+                  const rect = (e.currentTarget as HTMLImageElement).getBoundingClientRect();
+                  const x = ((e.clientX - rect.left) / rect.width) * 100;
+                  const y = ((e.clientY - rect.top) / rect.height) * 100;
+                  setOrigin({ x, y });
+                }}
                 priority={safeIndex === 0}
               />
             </>
