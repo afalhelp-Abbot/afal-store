@@ -17,7 +17,7 @@ export function getSupabaseServerClient() {
       },
       // no-op in Server Components
       set(_name: string, _value: string, _options: CookieOptions) {},
-      remove(_name: string, _options: CookieOptions) {},
     },
   });
 }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
