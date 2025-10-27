@@ -18,11 +18,12 @@ type BuyPanelProps = {
   // optional extras
   specialMessage?: string | null;
   darazUrl?: string | null;
+  darazTrustLine?: boolean;
   chatFacebookUrl?: string | null;
   chatInstagramUrl?: string | null;
 };
 
-export default function BuyPanel({ colors, models, packages, sizes, matrix, colorThumbs, logoUrl, specialMessage, darazUrl, chatFacebookUrl, chatInstagramUrl }: BuyPanelProps) {
+export default function BuyPanel({ colors, models, packages, sizes, matrix, colorThumbs, logoUrl, specialMessage, darazUrl, darazTrustLine, chatFacebookUrl, chatInstagramUrl }: BuyPanelProps) {
   const [selectedColor, setSelectedColor] = React.useState<string>(colors[0] || '');
   const [selectedModel, setSelectedModel] = React.useState<string>(models[0] || '');
   const [selectedPackage, setSelectedPackage] = React.useState<string>(packages[0] || '');
@@ -301,10 +302,22 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
       <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
         <span className="inline-flex items-center gap-1"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 12H4"/><path d="M14 6l6 6-6 6"/></svg> Cash on Delivery</span>
         <span className="inline-flex items-center gap-1"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21V7a2 2 0 0 0-2-2h-3l-2-2H8L6 5H5a2 2 0 0 0-2 2v14z"/></svg> 24–48h Dispatch</span>
-        <button type="button" onClick={()=>setShowReturns(true)} className="inline-flex items-center gap-1 hover:underline">
+        <button type="button" onClick={()=>{ setShowReturns(true); try { track('ClickReturnsInfo'); } catch {} }} className="inline-flex items-center gap-1 hover:underline">
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l3 3"/></svg>
           Easy Returns
         </button>
+        {darazTrustLine && darazUrl && (
+          <a
+            href={(() => { try { const u=new URL(darazUrl as string); u.searchParams.set('utm_source','afalstore'); u.searchParams.set('utm_medium','lp'); u.searchParams.set('utm_campaign','daraz_trust'); return u.toString(); } catch { return darazUrl as string; } })()}
+            target="_blank"
+            rel="noopener"
+            onClick={()=>{ try { track('ClickDarazTrust'); } catch {} }}
+            className="inline-flex items-center gap-1 hover:underline"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12l2-2 4 4 8-8 2 2-10 10-6-6z"/></svg>
+            Same seller on Daraz
+          </a>
+        )}
       </div>
 
       {showReturns && (

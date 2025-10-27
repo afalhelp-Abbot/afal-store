@@ -26,6 +26,7 @@ type Product = {
   chat_facebook_url?: string | null;
   chat_instagram_url?: string | null;
   special_message?: string | null;
+  daraz_trust_line?: boolean;
 };
 
 type Media = {
@@ -150,8 +151,9 @@ export default function EditProductPage() {
   const [chatFacebookUrl, setChatFacebookUrl] = useState<string>('');
   const [chatInstagramUrl, setChatInstagramUrl] = useState<string>('');
   const [specialMessage, setSpecialMessage] = useState<string>('');
+  const [darazTrustLine, setDarazTrustLine] = useState<boolean>(false);
   // snapshot of loaded basics
-  const [initialBasics, setInitialBasics] = useState<{ name: string; slug: string; active: boolean; descriptionEn: string; descriptionUr: string; logoUrl: string; darazEnabled: boolean; darazUrl: string; chatEnabled: boolean; chatFacebookUrl: string; chatInstagramUrl: string; specialMessage: string } | null>(null);
+  const [initialBasics, setInitialBasics] = useState<{ name: string; slug: string; active: boolean; descriptionEn: string; descriptionUr: string; logoUrl: string; darazEnabled: boolean; darazUrl: string; darazTrustLine: boolean; chatEnabled: boolean; chatFacebookUrl: string; chatInstagramUrl: string; specialMessage: string } | null>(null);
   // dirty flags for variants and add-variant form
   const [variantsDirtyFlag, setVariantsDirtyFlag] = useState(false);
   const [variantFormChangedFlag, setVariantFormChangedFlag] = useState(false);
@@ -164,7 +166,7 @@ export default function EditProductPage() {
       try {
         const { data: p, error: pErr } = await supabaseBrowser
           .from('products')
-          .select('id, name, slug, active, description_en, description_ur, logo_url, daraz_enabled, daraz_url, chat_enabled, chat_facebook_url, chat_instagram_url, special_message')
+          .select('id, name, slug, active, description_en, description_ur, logo_url, daraz_enabled, daraz_url, daraz_trust_line, chat_enabled, chat_facebook_url, chat_instagram_url, special_message')
           .eq('id', params.id)
           .maybeSingle();
         if (pErr) throw pErr;
@@ -182,6 +184,7 @@ export default function EditProductPage() {
         setChatFacebookUrl((p as any).chat_facebook_url || '');
         setChatInstagramUrl((p as any).chat_instagram_url || '');
         setSpecialMessage((p as any).special_message || '');
+        setDarazTrustLine(Boolean((p as any).daraz_trust_line));
         setInitialBasics({
           name: (p as any).name || '',
           slug: (p as any).slug || '',
@@ -191,6 +194,7 @@ export default function EditProductPage() {
           logoUrl: (p as any).logo_url || '',
           darazEnabled: !!(p as any).daraz_enabled,
           darazUrl: (p as any).daraz_url || '',
+          darazTrustLine: Boolean((p as any).daraz_trust_line),
           chatEnabled: !!(p as any).chat_enabled,
           chatFacebookUrl: (p as any).chat_facebook_url || '',
           chatInstagramUrl: (p as any).chat_instagram_url || '',
@@ -323,6 +327,7 @@ export default function EditProductPage() {
           logo_url: logoUrl || null,
           daraz_enabled: darazEnabled,
           daraz_url: darazEnabled ? (darazUrl || null) : null,
+          daraz_trust_line: darazEnabled ? darazTrustLine : false,
           chat_enabled: chatEnabled,
           chat_facebook_url: chatEnabled ? (chatFacebookUrl || null) : null,
           chat_instagram_url: chatEnabled ? (chatInstagramUrl || null) : null,
@@ -332,7 +337,7 @@ export default function EditProductPage() {
       if (error) throw error;
       router.refresh();
       // update snapshot after successful save
-      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage });
+      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, darazTrustLine, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage });
     } catch (e: any) {
       setError(e?.message || 'Failed to save product');
     } finally {
@@ -352,12 +357,13 @@ export default function EditProductPage() {
       initialBasics.logoUrl !== logoUrl ||
       initialBasics.darazEnabled !== darazEnabled ||
       initialBasics.darazUrl !== darazUrl ||
+      initialBasics.darazTrustLine !== darazTrustLine ||
       initialBasics.chatEnabled !== chatEnabled ||
       initialBasics.chatFacebookUrl !== chatFacebookUrl ||
       initialBasics.chatInstagramUrl !== chatInstagramUrl ||
       initialBasics.specialMessage !== specialMessage
     );
-  }, [initialBasics, name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage]);
+  }, [initialBasics, name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, darazTrustLine, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage]);
 
   // beforeunload guard
   useEffect(() => {
@@ -380,6 +386,7 @@ export default function EditProductPage() {
     setLogoUrl(initialBasics.logoUrl);
     setDarazEnabled(initialBasics.darazEnabled);
     setDarazUrl(initialBasics.darazUrl);
+    setDarazTrustLine(initialBasics.darazTrustLine);
     setChatEnabled(initialBasics.chatEnabled);
     setChatFacebookUrl(initialBasics.chatFacebookUrl);
     setChatInstagramUrl(initialBasics.chatInstagramUrl);
@@ -442,7 +449,7 @@ export default function EditProductPage() {
         })
         .eq('id', params.id);
       if (pErr) throw pErr;
-      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage });
+      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, darazTrustLine, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage });
 
       // 2) Add Variant (staged)
       const vf = readVariantForm();
@@ -1290,6 +1297,20 @@ export default function EditProductPage() {
             <div>
               <label className="block text-sm">Daraz URL</label>
               <input value={darazUrl} onChange={(e)=>setDarazUrl(e.target.value)} placeholder="https://www.daraz.pk/..." className="mt-1 w-full border rounded px-3 py-2" />
+            </div>
+          )}
+          {darazEnabled && (
+            <div className="flex items-center gap-2">
+              <input
+                id="ce-daraz-trust"
+                type="checkbox"
+                checked={darazTrustLine}
+                onChange={(e)=>setDarazTrustLine(e.target.checked)}
+                disabled={!darazUrl.trim()}
+              />
+              <label htmlFor="ce-daraz-trust" className="text-sm">
+                Show 'Same seller on Daraz' trust line
+              </label>
             </div>
           )}
           <div className="flex items-center gap-2">

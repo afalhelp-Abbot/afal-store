@@ -66,7 +66,7 @@ async function fetchLpData(slug: string) {
   // 1) Product by slug
   const { data: product } = await supabase
     .from('products')
-    .select('id, name, slug, description_en, description_ur, active, logo_url, daraz_enabled, daraz_url, chat_enabled, chat_facebook_url, chat_instagram_url, special_message')
+    .select('id, name, slug, description_en, description_ur, active, logo_url, daraz_enabled, daraz_url, daraz_trust_line, chat_enabled, chat_facebook_url, chat_instagram_url, special_message')
     .eq('slug', slug)
     .eq('active', true)
     .maybeSingle();
@@ -334,6 +334,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
             logoUrl={(product as any).logo_url as string | null}
             specialMessage={(product as any).special_message as string | null}
             darazUrl={((product as any).daraz_enabled ? (product as any).daraz_url : null) as string | null}
+            darazTrustLine={Boolean((product as any).daraz_trust_line)}
             chatFacebookUrl={((product as any).chat_enabled ? (product as any).chat_facebook_url : null) as string | null}
             chatInstagramUrl={((product as any).chat_enabled ? (product as any).chat_instagram_url : null) as string | null}
           />
@@ -465,6 +466,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
             logoUrl={(product as any).logo_url as string | null}
             specialMessage={(product as any).special_message as string | null}
             darazUrl={((product as any).daraz_enabled ? (product as any).daraz_url : null) as string | null}
+            darazTrustLine={Boolean((product as any).daraz_trust_line)}
             chatFacebookUrl={((product as any).chat_enabled ? (product as any).chat_facebook_url : null) as string | null}
             chatInstagramUrl={((product as any).chat_enabled ? (product as any).chat_instagram_url : null) as string | null}
           />
