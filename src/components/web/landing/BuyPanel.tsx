@@ -28,6 +28,7 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
   const [selectedPackage, setSelectedPackage] = React.useState<string>(packages[0] || '');
   const [selectedSize, setSelectedSize] = React.useState<string>(sizes[0] || '');
   const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [showReturns, setShowReturns] = React.useState(false);
   const panelRef = React.useRef<HTMLDivElement | null>(null);
   const [showFloatCTA, setShowFloatCTA] = React.useState(false);
   const [nearBottom, setNearBottom] = React.useState(false);
@@ -300,8 +301,34 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
       <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
         <span className="inline-flex items-center gap-1"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 12H4"/><path d="M14 6l6 6-6 6"/></svg> Cash on Delivery</span>
         <span className="inline-flex items-center gap-1"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21V7a2 2 0 0 0-2-2h-3l-2-2H8L6 5H5a2 2 0 0 0-2 2v14z"/></svg> 24–48h Dispatch</span>
-        <span className="inline-flex items-center gap-1"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0z"/><path d="M9 12l2 2 4-4"/></svg> Easy Returns</span>
+        <button type="button" onClick={()=>setShowReturns(true)} className="inline-flex items-center gap-1 hover:underline">
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l3 3"/></svg>
+          Easy Returns
+        </button>
       </div>
+
+      {showReturns && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/40" onClick={()=>setShowReturns(false)} />
+          <div className="absolute inset-x-4 sm:inset-x-auto sm:right-6 top-[15%] sm:top-24 bg-white border rounded-lg shadow-xl max-w-lg mx-auto p-5">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                {logoUrl ? (<img src={logoUrl as string} alt="Logo" className="h-6 w-auto object-contain rounded border bg-white p-0.5" />) : null}
+                <h3 className="text-base font-semibold">Return Policy</h3>
+              </div>
+              <button onClick={()=>setShowReturns(false)} className="text-gray-500 hover:text-gray-700">✕</button>
+            </div>
+            <div className="text-sm text-gray-700 space-y-3">
+              <p>Returns are accepted only for product defects within <span className="font-medium">7 days of receiving</span>, with original packaging intact. Our support team will inspect and, once approved, refunds are issued within <span className="font-medium">14 days</span> via Easypaisa.</p>
+              <p>See the full policy for details about eligibility and process.</p>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <a href="/return-policy" target="_blank" rel="noopener" className="px-4 py-2 rounded border">Open full policy</a>
+              <button onClick={()=>setShowReturns(false)} className="px-4 py-2 rounded bg-black text-white">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <OrderDrawer
         open={drawerOpen}
