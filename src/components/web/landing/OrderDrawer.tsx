@@ -16,9 +16,10 @@ type OrderDrawerProps = {
   initialColor?: string | null;
   colorThumbs?: Record<string, string | undefined>;
   logoUrl?: string | null;
+  specialMessage?: string | null;
 };
 
-export default function OrderDrawer({ open, onClose, colors, models, packages, sizes, matrix, initialColor, colorThumbs, logoUrl }: OrderDrawerProps) {
+export default function OrderDrawer({ open, onClose, colors, models, packages, sizes, matrix, initialColor, colorThumbs, logoUrl, specialMessage }: OrderDrawerProps) {
   const router = useRouter();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -124,7 +125,12 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
           </div>
           <button onClick={() => !loading && onClose()} className="text-gray-500 hover:text-gray-700">✕</button>
         </div>
-        <div className="text-xs text-gray-500 mb-4">Cash on Delivery · 24–48h Dispatch · Easy Returns</div>
+        <div className="text-xs text-gray-500 mb-2">Cash on Delivery · 24–48h Dispatch · Easy Returns</div>
+        {specialMessage && (
+          <div className="text-sm px-2.5 py-1.5 rounded border bg-emerald-50 text-emerald-800 mb-3">
+            {specialMessage}
+          </div>
+        )}
 
         <form ref={formRef} onSubmit={handleSubmit} className="space-y-5">
             {/* Choose Color */}

@@ -20,6 +20,12 @@ type Product = {
   description_en: string | null;
   description_ur: string | null;
   logo_url: string | null;
+  daraz_enabled?: boolean;
+  daraz_url?: string | null;
+  chat_enabled?: boolean;
+  chat_facebook_url?: string | null;
+  chat_instagram_url?: string | null;
+  special_message?: string | null;
 };
 
 type Media = {
@@ -137,8 +143,15 @@ export default function EditProductPage() {
   const [descriptionEn, setDescriptionEn] = useState('');
   const [descriptionUr, setDescriptionUr] = useState('');
   const [logoUrl, setLogoUrl] = useState<string>('');
+  // Checkout Extras state
+  const [darazEnabled, setDarazEnabled] = useState(false);
+  const [darazUrl, setDarazUrl] = useState<string>('');
+  const [chatEnabled, setChatEnabled] = useState(false);
+  const [chatFacebookUrl, setChatFacebookUrl] = useState<string>('');
+  const [chatInstagramUrl, setChatInstagramUrl] = useState<string>('');
+  const [specialMessage, setSpecialMessage] = useState<string>('');
   // snapshot of loaded basics
-  const [initialBasics, setInitialBasics] = useState<{ name: string; slug: string; active: boolean; descriptionEn: string; descriptionUr: string; logoUrl: string } | null>(null);
+  const [initialBasics, setInitialBasics] = useState<{ name: string; slug: string; active: boolean; descriptionEn: string; descriptionUr: string; logoUrl: string; darazEnabled: boolean; darazUrl: string; chatEnabled: boolean; chatFacebookUrl: string; chatInstagramUrl: string; specialMessage: string } | null>(null);
   // dirty flags for variants and add-variant form
   const [variantsDirtyFlag, setVariantsDirtyFlag] = useState(false);
   const [variantFormChangedFlag, setVariantFormChangedFlag] = useState(false);
@@ -151,7 +164,7 @@ export default function EditProductPage() {
       try {
         const { data: p, error: pErr } = await supabaseBrowser
           .from('products')
-          .select('id, name, slug, active, description_en, description_ur, logo_url')
+          .select('id, name, slug, active, description_en, description_ur, logo_url, daraz_enabled, daraz_url, chat_enabled, chat_facebook_url, chat_instagram_url, special_message')
           .eq('id', params.id)
           .maybeSingle();
         if (pErr) throw pErr;
@@ -163,6 +176,12 @@ export default function EditProductPage() {
         setDescriptionEn((p as any).description_en || '');
         setDescriptionUr((p as any).description_ur || '');
         setLogoUrl((p as any).logo_url || '');
+        setDarazEnabled(!!(p as any).daraz_enabled);
+        setDarazUrl((p as any).daraz_url || '');
+        setChatEnabled(!!(p as any).chat_enabled);
+        setChatFacebookUrl((p as any).chat_facebook_url || '');
+        setChatInstagramUrl((p as any).chat_instagram_url || '');
+        setSpecialMessage((p as any).special_message || '');
         setInitialBasics({
           name: (p as any).name || '',
           slug: (p as any).slug || '',
@@ -170,6 +189,12 @@ export default function EditProductPage() {
           descriptionEn: (p as any).description_en || '',
           descriptionUr: (p as any).description_ur || '',
           logoUrl: (p as any).logo_url || '',
+          darazEnabled: !!(p as any).daraz_enabled,
+          darazUrl: (p as any).daraz_url || '',
+          chatEnabled: !!(p as any).chat_enabled,
+          chatFacebookUrl: (p as any).chat_facebook_url || '',
+          chatInstagramUrl: (p as any).chat_instagram_url || '',
+          specialMessage: (p as any).special_message || '',
         });
 
         const { data: m, error: mErr } = await supabaseBrowser
@@ -284,6 +309,9 @@ export default function EditProductPage() {
     setSaving(true);
     setError(null);
     try {
+      // Inline validation for checkout extras
+      if (darazEnabled && !(darazUrl || '').trim()) throw new Error('Daraz URL is required when Buy on Daraz is enabled.');
+      if (chatEnabled && !((chatFacebookUrl || '').trim() || (chatInstagramUrl || '').trim())) throw new Error('Enter at least one Chat URL (Facebook or Instagram) when Chat is enabled.');
       const { error } = await supabaseBrowser
         .from('products')
         .update({
@@ -293,12 +321,18 @@ export default function EditProductPage() {
           description_en: descriptionEn || null,
           description_ur: descriptionUr || null,
           logo_url: logoUrl || null,
+          daraz_enabled: darazEnabled,
+          daraz_url: darazEnabled ? (darazUrl || null) : null,
+          chat_enabled: chatEnabled,
+          chat_facebook_url: chatEnabled ? (chatFacebookUrl || null) : null,
+          chat_instagram_url: chatEnabled ? (chatInstagramUrl || null) : null,
+          special_message: specialMessage || null,
         })
         .eq('id', params.id);
       if (error) throw error;
       router.refresh();
       // update snapshot after successful save
-      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl });
+      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage });
     } catch (e: any) {
       setError(e?.message || 'Failed to save product');
     } finally {
@@ -315,9 +349,15 @@ export default function EditProductPage() {
       initialBasics.active !== active ||
       initialBasics.descriptionEn !== descriptionEn ||
       initialBasics.descriptionUr !== descriptionUr ||
-      initialBasics.logoUrl !== logoUrl
+      initialBasics.logoUrl !== logoUrl ||
+      initialBasics.darazEnabled !== darazEnabled ||
+      initialBasics.darazUrl !== darazUrl ||
+      initialBasics.chatEnabled !== chatEnabled ||
+      initialBasics.chatFacebookUrl !== chatFacebookUrl ||
+      initialBasics.chatInstagramUrl !== chatInstagramUrl ||
+      initialBasics.specialMessage !== specialMessage
     );
-  }, [initialBasics, name, slug, active, descriptionEn, descriptionUr, logoUrl]);
+  }, [initialBasics, name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage]);
 
   // beforeunload guard
   useEffect(() => {
@@ -338,6 +378,12 @@ export default function EditProductPage() {
     setDescriptionEn(initialBasics.descriptionEn);
     setDescriptionUr(initialBasics.descriptionUr);
     setLogoUrl(initialBasics.logoUrl);
+    setDarazEnabled(initialBasics.darazEnabled);
+    setDarazUrl(initialBasics.darazUrl);
+    setChatEnabled(initialBasics.chatEnabled);
+    setChatFacebookUrl(initialBasics.chatFacebookUrl);
+    setChatInstagramUrl(initialBasics.chatInstagramUrl);
+    setSpecialMessage(initialBasics.specialMessage);
     // clear Add Variant form
     if (typeof document !== 'undefined') {
       ['v-sku','v-price','v-color','v-size','v-model','v-package'].forEach((id)=>{
@@ -387,10 +433,16 @@ export default function EditProductPage() {
           description_en: descriptionEn || null,
           description_ur: descriptionUr || null,
           logo_url: logoUrl || null,
+          daraz_enabled: darazEnabled,
+          daraz_url: darazEnabled ? (darazUrl || null) : null,
+          chat_enabled: chatEnabled,
+          chat_facebook_url: chatEnabled ? (chatFacebookUrl || null) : null,
+          chat_instagram_url: chatEnabled ? (chatInstagramUrl || null) : null,
+          special_message: specialMessage || null,
         })
         .eq('id', params.id);
       if (pErr) throw pErr;
-      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl });
+      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage });
 
       // 2) Add Variant (staged)
       const vf = readVariantForm();
@@ -1219,6 +1271,46 @@ export default function EditProductPage() {
                 <HelpTip>Paste a public URL or click Upload to store in the product-media bucket.</HelpTip>
               </div>
             </div>
+          </div>
+        </div>
+        <div>
+          <button onClick={saveBasics} disabled={saving} className={`px-4 py-2 rounded text-white ${saving ? 'bg-gray-400' : 'bg-black hover:bg-gray-800'}`}>{saving ? 'Saving…' : 'Save'}</button>
+        </div>
+      </section>
+
+      {/* Checkout Extras */}
+      <section className="space-y-4 border rounded p-4">
+        <h2 className="font-medium">Checkout Extras</h2>
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <input id="ce-daraz" type="checkbox" checked={darazEnabled} onChange={(e)=>setDarazEnabled(e.target.checked)} />
+            <label htmlFor="ce-daraz" className="font-medium">Enable Buy on Daraz</label>
+          </div>
+          {darazEnabled && (
+            <div>
+              <label className="block text-sm">Daraz URL</label>
+              <input value={darazUrl} onChange={(e)=>setDarazUrl(e.target.value)} placeholder="https://www.daraz.pk/..." className="mt-1 w-full border rounded px-3 py-2" />
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <input id="ce-chat" type="checkbox" checked={chatEnabled} onChange={(e)=>setChatEnabled(e.target.checked)} />
+            <label htmlFor="ce-chat" className="font-medium">Enable Chat</label>
+          </div>
+          {chatEnabled && (
+            <div className="grid md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm">Facebook Page URL (optional)</label>
+                <input value={chatFacebookUrl} onChange={(e)=>setChatFacebookUrl(e.target.value)} placeholder="https://facebook.com/yourpage" className="mt-1 w-full border rounded px-3 py-2" />
+              </div>
+              <div>
+                <label className="block text-sm">Instagram URL (optional)</label>
+                <input value={chatInstagramUrl} onChange={(e)=>setChatInstagramUrl(e.target.value)} placeholder="https://instagram.com/yourprofile" className="mt-1 w-full border rounded px-3 py-2" />
+              </div>
+            </div>
+          )}
+          <div>
+            <label className="block font-medium">Special message <HelpTip>Shown above the buttons in the checkout panel. Leave empty to hide.</HelpTip></label>
+            <input value={specialMessage} onChange={(e)=>setSpecialMessage(e.target.value)} placeholder="e.g., Free delivery till Oct 31" className="mt-1 w-full border rounded px-3 py-2" />
           </div>
         </div>
         <div>

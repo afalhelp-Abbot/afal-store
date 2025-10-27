@@ -2,6 +2,7 @@
 
 import React from 'react';
 import OrderDrawer from './OrderDrawer';
+import { track } from '@/lib/pixel';
 
 type BuyPanelProps = {
   colors: string[];
@@ -14,9 +15,14 @@ type BuyPanelProps = {
   colorThumbs?: Record<string, string | undefined>;
   // optional product logo to show in the panel header
   logoUrl?: string | null;
+  // optional extras
+  specialMessage?: string | null;
+  darazUrl?: string | null;
+  chatFacebookUrl?: string | null;
+  chatInstagramUrl?: string | null;
 };
 
-export default function BuyPanel({ colors, models, packages, sizes, matrix, colorThumbs, logoUrl }: BuyPanelProps) {
+export default function BuyPanel({ colors, models, packages, sizes, matrix, colorThumbs, logoUrl, specialMessage, darazUrl, chatFacebookUrl, chatInstagramUrl }: BuyPanelProps) {
   const [selectedColor, setSelectedColor] = React.useState<string>(colors[0] || '');
   const [selectedModel, setSelectedModel] = React.useState<string>(models[0] || '');
   const [selectedPackage, setSelectedPackage] = React.useState<string>(packages[0] || '');
@@ -45,6 +51,8 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
   const avail = entry?.availability;
   const variantId = entry?.variantId ?? null;
   const lowStock = typeof avail === 'number' && avail > 0 && avail <= 5;
+
+  const effectiveChatUrl = chatFacebookUrl || chatInstagramUrl || null;
 
   // Determine if any combinations under current selection are available (for enabling the drawer)
   const anyAvailForSelection = React.useMemo(() => {
@@ -240,15 +248,52 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
         )}
       </div>
 
-      <div className="flex items-center gap-3">
+      {specialMessage && (
+        <div className="text-sm px-2.5 py-1.5 sm:px-3 sm:py-2 rounded border bg-emerald-50 text-emerald-800">
+          {specialMessage}
+        </div>
+      )}
+
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         <button
           onClick={() => setDrawerOpen(true)}
           disabled={!anyAvailForSelection}
-          className={`rounded px-4 py-2 text-white ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
+          className={`w-full sm:w-auto rounded px-4 py-2 text-white ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
         >
           Start Order
         </button>
-        <button className="px-4 py-2 rounded border">Chat</button>
+        {darazUrl && (
+          <button
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                // Append UTM parameters safely
+                let href = darazUrl as string;
+                try {
+                  const u = new URL(darazUrl as string);
+                  u.searchParams.set('utm_source', 'afalstore');
+                  u.searchParams.set('utm_medium', 'lp');
+                  u.searchParams.set('utm_campaign', 'buy_on_daraz');
+                  href = u.toString();
+                } catch {}
+                try { track('ClickDaraz', { url: href }); } catch {}
+                window.open(href, '_blank', 'noopener');
+              }
+            }}
+            className="w-full sm:w-auto px-3 sm:px-4 py-2 rounded bg-[#F57224] hover:bg-[#e86619] text-white inline-flex items-center justify-center gap-2 hover:ring-2 hover:ring-[#f9a66b]/50"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="opacity-90"><path d="M6 2a1 1 0 0 0-1 1v2H3a1 1 0 1 0 0 2h1l1.6 10.4A3 3 0 0 0 8.57 20H17a1 1 0 1 0 0-2H8.57a1 1 0 0 1-.99-.84L7.4 16H18a3 3 0 0 0 2.95-2.52l.9-5.4A1 1 0 0 0 20.88 6H7V3a1 1 0 0 0-1-1z"/></svg>
+            Buy on Daraz
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-90"><path d="M18 13v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></svg>
+          </button>
+        )}
+        {effectiveChatUrl && (
+          <button
+            onClick={() => { if (typeof window !== 'undefined' && effectiveChatUrl) { try { track('ClickChat', { url: effectiveChatUrl }); } catch {}; window.open(effectiveChatUrl, '_blank', 'noopener'); } }}
+            className="w-full sm:w-auto px-4 py-2 rounded border"
+          >
+            Chat
+          </button>
+        )}
       </div>
 
       {/* Trust row */}
@@ -318,13 +363,37 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
                 </div>
               </div>
             )}
-            <button
-              onClick={() => setDrawerOpen(true)}
-              disabled={!anyAvailForSelection}
-              className={`w-full rounded ${nearBottom ? 'px-6 py-3.5' : 'px-5 py-2.5'} text-white ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
-            >
-              Start Order
-            </button>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                onClick={() => setDrawerOpen(true)}
+                disabled={!anyAvailForSelection}
+                className={`w-full sm:w-auto rounded ${nearBottom ? 'px-6 py-3.5' : 'px-5 py-2.5'} text-white ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
+              >
+                Start Order
+              </button>
+              {darazUrl && (
+                <button
+                  onClick={() => {
+                    if (typeof window !== 'undefined') {
+                      let href = darazUrl as string;
+                      try {
+                        const u = new URL(darazUrl as string);
+                        u.searchParams.set('utm_source', 'afalstore');
+                        u.searchParams.set('utm_medium', 'lp');
+                        u.searchParams.set('utm_campaign', 'buy_on_daraz');
+                        href = u.toString();
+                      } catch {}
+                      try { track('ClickDaraz', { url: href, placement: 'floating' }); } catch {}
+                      window.open(href, '_blank', 'noopener');
+                    }
+                  }}
+                  className={`w-full sm:w-auto rounded ${nearBottom ? 'px-6 py-3.5' : 'px-5 py-2.5'} bg-[#F57224] hover:bg-[#e86619] text-white inline-flex items-center justify-center gap-2`}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="opacity-90"><path d="M6 2a1 1 0 0 0-1 1v2H3a1 1 0 1 0 0 2h1l1.6 10.4A3 3 0 0 0 8.57 20H17a1 1 0 1 0 0-2H8.57a1 1 0 0 1-.99-.84L7.4 16H18a3 3 0 0 0 2.95-2.52l.9-5.4A1 1 0 0 0 20.88 6H7V3a1 1 0 0 0-1-1z"/></svg>
+                  Daraz
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
