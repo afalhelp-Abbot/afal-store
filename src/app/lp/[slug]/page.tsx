@@ -252,6 +252,8 @@ export default async function LandingPage({ params }: { params: { slug: string }
   }
 
   const { product, mediaItems, colors, models, packages, sizes, matrix, specs, sections, colorThumbs, variants, pixel } = data as any;
+  const contentIdSource = (pixel && pixel.content_id_source === 'variant_id') ? 'variant_id' : 'sku';
+  const variantSkuMap: Record<string, string> = Object.fromEntries(((variants||[]) as any[]).map((v:any)=>[v.id, v.sku]));
 
   // Build Product JSON-LD for SEO
   const site = 'https://afalstore.com';
@@ -337,6 +339,8 @@ export default async function LandingPage({ params }: { params: { slug: string }
             darazTrustLine={Boolean((product as any).daraz_trust_line)}
             chatFacebookUrl={((product as any).chat_enabled ? (product as any).chat_facebook_url : null) as string | null}
             chatInstagramUrl={((product as any).chat_enabled ? (product as any).chat_instagram_url : null) as string | null}
+            contentIdSource={contentIdSource as any}
+            variantSkuMap={variantSkuMap}
           />
         </div>
 

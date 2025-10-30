@@ -21,9 +21,12 @@ type BuyPanelProps = {
   darazTrustLine?: boolean;
   chatFacebookUrl?: string | null;
   chatInstagramUrl?: string | null;
+  // meta pixel support
+  contentIdSource?: 'sku' | 'variant_id';
+  variantSkuMap?: Record<string, string>;
 };
 
-export default function BuyPanel({ colors, models, packages, sizes, matrix, colorThumbs, logoUrl, specialMessage, darazUrl, darazTrustLine, chatFacebookUrl, chatInstagramUrl }: BuyPanelProps) {
+export default function BuyPanel({ colors, models, packages, sizes, matrix, colorThumbs, logoUrl, specialMessage, darazUrl, darazTrustLine, chatFacebookUrl, chatInstagramUrl, contentIdSource, variantSkuMap }: BuyPanelProps) {
   const [selectedColor, setSelectedColor] = React.useState<string>(colors[0] || '');
   const [selectedModel, setSelectedModel] = React.useState<string>(models[0] || '');
   const [selectedPackage, setSelectedPackage] = React.useState<string>(packages[0] || '');
@@ -354,6 +357,8 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
         initialColor={selectedColor || null}
         colorThumbs={colorThumbs}
         logoUrl={logoUrl}
+        contentIdSource={contentIdSource}
+        variantSkuMap={variantSkuMap}
       />
 
       {/* Floating buy panel that follows scrolling; grows near bottom */}

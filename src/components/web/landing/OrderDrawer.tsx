@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
+import { track } from '@/lib/pixel';
 
 type Matrix = Record<string, { price: number; availability: number; variantId: string }>;
 
@@ -17,9 +18,11 @@ type OrderDrawerProps = {
   colorThumbs?: Record<string, string | undefined>;
   logoUrl?: string | null;
   specialMessage?: string | null;
+  contentIdSource?: 'sku' | 'variant_id';
+  variantSkuMap?: Record<string, string>;
 };
 
-export default function OrderDrawer({ open, onClose, colors, models, packages, sizes, matrix, initialColor, colorThumbs, logoUrl, specialMessage }: OrderDrawerProps) {
+export default function OrderDrawer({ open, onClose, colors, models, packages, sizes, matrix, initialColor, colorThumbs, logoUrl, specialMessage, contentIdSource, variantSkuMap }: OrderDrawerProps) {
   const router = useRouter();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -81,6 +84,21 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
         .map(([k, q]) => ({ variant_id: matrix[k]?.variantId, qty: q }))
         .filter((it) => !!it.variant_id);
       if (items.length === 0) throw new Error('Please enter quantity for at least one option');
+      // Fire AddToCart with contents/value before navigating to checkout
+      try {
+        const priceByVariant = (vid: string): number => {
+          for (const cell of Object.values(matrix)) { if (cell?.variantId === vid) return Number(cell?.price || 0); }
+          return 0;
+        };
+        const contents = items.map((it) => ({
+          id: (contentIdSource === 'variant_id') ? (it.variant_id as string) : ((variantSkuMap?.[it.variant_id as string]) || (it.variant_id as string)),
+          quantity: Number(it.qty || 0),
+          item_price: priceByVariant(it.variant_id as string),
+        }));
+        const value = contents.reduce((s, c) => s + Number(c.item_price || 0) * Number(c.quantity || 0), 0);
+        const content_ids = contents.map(c => c.id).slice(0, 20);
+        track('AddToCart', { contents, content_ids, value, currency: 'PKR', content_type: 'product' });
+      } catch {}
       // Pass items to /checkout using query param (URL-encoded JSON)
       const itemsParam = encodeURIComponent(JSON.stringify(items));
       const fromPath = typeof window !== 'undefined' ? window.location.pathname : '/';

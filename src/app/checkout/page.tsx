@@ -501,7 +501,8 @@ function CheckoutInner() {
             item_price: Number(variants[ln.variant_id]?.price || 0),
           }));
           const value = Number(subtotal) || 0; // exclude shipping per requirement
-          track('Purchase', { contents, value, currency: 'PKR', content_type: 'product' });
+          // Include event_id returned from server (order_id) to dedupe with CAPI
+          track('Purchase', { contents, value, currency: 'PKR', content_type: 'product', event_id: data.order_id });
           firedPurchaseRef.current = true;
         }
       }
