@@ -1,16 +1,16 @@
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
 import ImageGallery, { type MediaItem } from '@/components/web/product/ImageGallery';
 // Local media for the Air Tag product
-import img1 from '../../../../Images/2c6e7458128b076e82bd99f52ab130c8.avif';
-import img2 from '../../../../Images/3c03271147d6f8062d3cdbea740aee99.avif';
-import img3 from '../../../../Images/8227e60d14e5f9f681bd580a6671b3c5.avif';
-import img4 from '../../../../Images/8f2cf7b23a638f499313f6fbf6bd4087.avif';
-import img5 from '../../../../Images/94caacfb5a2c869439a89646703d75bb.avif';
-import img6 from '../../../../Images/9e6a7339bbd3890af376ef20faeea292.avif';
-import img7 from '../../../../Images/ab848a78a9c626e6cb937806b8c8fbfd.avif';
-import img8 from '../../../../Images/c7ef806a1af24b95db216d4b8cab4601.avif';
-import img9 from '../../../../Images/cad05795ed848d2c89cb4b7b53970f4c.avif';
-import img10 from '../../../../Images/d3d9555482ccfc3130698b9400c07518.avif';
+import img1 from '../../../../Images/8.avif';
+import img2 from '../../../../Images/9.avif';
+import img3 from '../../../../Images/13.avif';
+import img4 from '../../../../Images/10.avif';
+import img5 from '../../../../Images/12.avif';
+import img6 from '../../../../Images/11.avif';
+import img7 from '../../../../Images/14.avif';
+import img8 from '../../../../Images/15.avif';
+import img9 from '../../../../Images/16.avif';
+import img10 from '../../../../Images/17.avif';
 
 async function getProduct() {
   const supabase = getSupabaseServerClient();
