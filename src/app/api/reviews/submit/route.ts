@@ -29,6 +29,11 @@ function normalizePhonePK(phone?: string | null) {
   return p;
 }
 
+function digitsOnly(phone?: string | null) {
+  if (!phone) return '';
+  return String(phone).replace(/\D/g, '');
+}
+
 export async function POST(req: Request) {
   try {
     if (!NEXT_PUBLIC_SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -52,25 +57,44 @@ export async function POST(req: Request) {
     const phone = normalizePhonePK(phoneRaw);
     if (!phone) return NextResponse.json({ ok: false, error: "phone_required" }, { status: 400 });
 
-    // Match shipped order for this phone and product
-    // orders (status='shipped', phone=phone) -> order_items -> variants(product_id)
-    const { data: orders } = await supabase
-      .from("orders")
-      .select("id")
-      .eq("status", "shipped")
-      .eq("phone", phone)
-      .limit(50);
-
+    // Match shipped order for this product and phone (allow formatting differences)
+    // First check web orders (order_lines), then admin orders (order_items)
+    const submittedDigits = digitsOnly(phone);
     let matchedOrderId: string | null = null;
-    if (orders && orders.length) {
-      const orderIds = orders.map((o: any) => o.id);
-      const { data: lines } = await supabase
-        .from("order_items")
-        .select("order_id, variants!inner(product_id)")
-        .in("order_id", orderIds);
-      for (const l of lines || []) {
-        const pid = (l as any)?.variants?.product_id as string | undefined;
-        if (pid === product_id) { matchedOrderId = (l as any).order_id as string; break; }
+
+    // Web orders path
+    if (!matchedOrderId) {
+      const { data: shippedWeb } = await supabase
+        .from('order_lines')
+        .select('order_id, orders!inner(id, phone, status), variants!inner(product_id)')
+        .eq('orders.status', 'shipped')
+        .eq('variants.product_id', product_id)
+        .limit(200);
+      for (const row of shippedWeb || []) {
+        const ord = (row as any).orders as any;
+        const ordDigits = digitsOnly(ord?.phone || '');
+        if (ordDigits === submittedDigits || (ordDigits.endsWith(submittedDigits.slice(-10)) && submittedDigits.length >= 10)) {
+          matchedOrderId = (row as any).order_id as string;
+          break;
+        }
+      }
+    }
+
+    // Admin orders path
+    if (!matchedOrderId) {
+      const { data: shippedAdmin } = await supabase
+        .from('order_items')
+        .select('order_id, orders!inner(id, phone, status), variants!inner(product_id)')
+        .eq('orders.status', 'shipped')
+        .eq('variants.product_id', product_id)
+        .limit(200);
+      for (const row of shippedAdmin || []) {
+        const ord = (row as any).orders as any;
+        const ordDigits = digitsOnly(ord?.phone || '');
+        if (ordDigits === submittedDigits || (ordDigits.endsWith(submittedDigits.slice(-10)) && submittedDigits.length >= 10)) {
+          matchedOrderId = (row as any).order_id as string;
+          break;
+        }
       }
     }
 
