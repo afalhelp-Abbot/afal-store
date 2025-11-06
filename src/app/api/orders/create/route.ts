@@ -176,70 +176,113 @@ export async function POST(req: Request) {
 
     // Conversions API (Meta) — Purchase event (server-to-server)
     try {
-      const PIXEL_ID = process.env.FB_PIXEL_ID;
+      const GLOBAL_PIXEL_ID = process.env.FB_PIXEL_ID;
       const ACCESS_TOKEN = process.env.FB_ACCESS_TOKEN;
-      if (!PIXEL_ID || !ACCESS_TOKEN) {
-        console.warn('[orders/create] FB CAPI disabled (missing FB_PIXEL_ID or FB_ACCESS_TOKEN)');
+      if (!ACCESS_TOKEN) {
+        console.warn('[orders/create] FB CAPI disabled (missing FB_ACCESS_TOKEN)');
       } else {
-        // Build value and contents from order_lines
+        // Build value/contents from order_lines and resolve per-product pixel from variants -> products -> product_pixel
         const { data: lines2 } = await getSupabaseServiceClient()
           .from('order_lines')
-          .select('variant_id, qty, unit_price, line_total, variants!inner(sku)')
+          .select('variant_id, qty, unit_price, line_total, variants!inner(sku, product_id)')
           .eq('order_id', orderId);
         const lineRows2 = (lines2 as any[]) || [];
         const value = lineRows2.reduce((s, r) => s + Number(r.line_total || 0), 0) + Number((body?.shipping?.amount as any) || 0); // include shipping
         const contents = lineRows2.map(r => ({ id: r?.variants?.sku || r.variant_id, quantity: Number(r.qty), item_price: Number(r.unit_price) }));
 
-        // User data: fbp/fbc from payload, IP/UA from headers, hash email/phone
-        const fbp = body?.fbMeta?.fbp || null;
-        const fbc = body?.fbMeta?.fbc || null;
-        const ua = req.headers.get('user-agent') || undefined;
-        const ip = (req.headers.get('x-forwarded-for') || '').split(',')[0]?.trim() || undefined;
+        // Resolve pixel: if exactly one enabled per-product pixel among products in the order, use it; else fallback to global
+        const productIdsSet = new Set<string>();
+        for (const r of lineRows2) {
+          const pid = (r as any)?.variants?.product_id as string | undefined;
+          if (pid) productIdsSet.add(pid);
+        }
+        let resolvedPixelId: string | undefined = undefined;
+        let resolveReason = 'no_products';
+        if (productIdsSet.size > 0) {
+          const productIds = Array.from(productIdsSet);
+          const { data: pixelRows } = await getSupabaseServiceClient()
+            .from('product_pixel')
+            .select('product_id, enabled, pixel_id')
+            .in('product_id', productIds);
+          const enabledPixels = (pixelRows || [])
+            .filter((p: any) => !!p?.enabled && !!(p?.pixel_id || '').trim())
+            .map((p: any) => String(p.pixel_id).trim());
+          const distinct = Array.from(new Set(enabledPixels));
+          if (distinct.length === 1) {
+            resolvedPixelId = distinct[0];
+            resolveReason = 'single_per_product_pixel';
+          } else if (distinct.length > 1) {
+            resolveReason = 'multiple_per_product_pixels_fallback_global';
+          } else {
+            resolveReason = 'no_per_product_pixels_fallback_global';
+          }
+        }
+        if (!resolvedPixelId) {
+          resolvedPixelId = (GLOBAL_PIXEL_ID || '').trim() || undefined;
+        }
 
-        const sha256 = (s?: string | null) => {
-          if (!s) return undefined;
-          try {
-            return crypto.createHash('sha256').update(String(s).trim().toLowerCase()).digest('hex');
-          } catch { return undefined; }
-        };
-        const em = sha256(body?.customer?.email || null);
-        // Normalize PK phone like +92XXXXXXXXXX before hashing
-        const normPhone = (p?: string | null) => (p ? p.replace(/\D/g, '') : undefined);
-        const ph = sha256(normPhone(body?.customer?.phone || null));
+        console.log('[orders/create] FB CAPI pixel resolve', {
+          orderId,
+          pixel: resolvedPixelId || 'undefined',
+          reason: resolveReason,
+          env: process.env.NODE_ENV,
+        });
 
-        const payload = {
-          data: [
-            {
-              event_name: 'Purchase',
-              event_time: Math.floor(Date.now() / 1000),
-              event_id: String(orderId), // dedupe with browser Purchase if sent with same id
-              action_source: 'website',
-              event_source_url: undefined,
-              user_data: {
-                client_user_agent: ua,
-                client_ip_address: ip,
-                fbp: fbp || undefined,
-                fbc: fbc || undefined,
-                em,
-                ph,
-              },
-              custom_data: {
-                currency: 'PKR',
-                value: Number(isFinite(value as any) ? value : 0),
-                contents,
-                content_type: 'product',
-              },
-            },
-          ],
-          test_event_code: process.env.FB_TEST_EVENT_CODE || undefined,
-        } as any;
-        const url = `https://graph.facebook.com/v17.0/${encodeURIComponent(PIXEL_ID)}/events?access_token=${encodeURIComponent(ACCESS_TOKEN)}`;
-        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        const txt = await res.text();
-        if (!res.ok) {
-          console.error('[orders/create] FB CAPI error', res.status, txt);
+        if (!resolvedPixelId) {
+          console.warn('[orders/create] FB CAPI skipped (no per-product pixel and no global fallback)');
         } else {
-          console.log('[orders/create] FB CAPI sent', txt);
+          // User data: fbp/fbc from payload, IP/UA from headers, hash email/phone
+          const fbp = body?.fbMeta?.fbp || null;
+          const fbc = body?.fbMeta?.fbc || null;
+          const ua = req.headers.get('user-agent') || undefined;
+          const ip = (req.headers.get('x-forwarded-for') || '').split(',')[0]?.trim() || undefined;
+
+          const sha256 = (s?: string | null) => {
+            if (!s) return undefined;
+            try {
+              return crypto.createHash('sha256').update(String(s).trim().toLowerCase()).digest('hex');
+            } catch { return undefined; }
+          };
+          const em = sha256(body?.customer?.email || null);
+          // Normalize PK phone like +92XXXXXXXXXX before hashing
+          const normPhone = (p?: string | null) => (p ? p.replace(/\D/g, '') : undefined);
+          const ph = sha256(normPhone(body?.customer?.phone || null));
+
+          const payload = {
+            data: [
+              {
+                event_name: 'Purchase',
+                event_time: Math.floor(Date.now() / 1000),
+                event_id: String(orderId), // dedupe with browser Purchase if sent with same id
+                action_source: 'website',
+                event_source_url: undefined,
+                user_data: {
+                  client_user_agent: ua,
+                  client_ip_address: ip,
+                  fbp: fbp || undefined,
+                  fbc: fbc || undefined,
+                  em,
+                  ph,
+                },
+                custom_data: {
+                  currency: 'PKR',
+                  value: Number(isFinite(value as any) ? value : 0),
+                  contents,
+                  content_type: 'product',
+                },
+              },
+            ],
+            // Only include test_event_code outside production
+            test_event_code: process.env.NODE_ENV !== 'production' ? (process.env.FB_TEST_EVENT_CODE || undefined) : undefined,
+          } as any;
+          const url = `https://graph.facebook.com/v17.0/${encodeURIComponent(resolvedPixelId)}/events?access_token=${encodeURIComponent(ACCESS_TOKEN)}`;
+          const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+          const txt = await res.text();
+          if (!res.ok) {
+            console.error('[orders/create] FB CAPI error', res.status, txt);
+          } else {
+            console.log('[orders/create] FB CAPI sent', { status: res.status, body: txt?.slice?.(0, 500) });
+          }
         }
       }
     } catch (e) {
