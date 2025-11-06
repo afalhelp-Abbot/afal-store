@@ -1,5 +1,8 @@
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
 import BuyPanel from '@/components/web/landing/BuyPanel';
+import dynamic from 'next/dynamic';
+const ReviewsSection = dynamic(() => import('@/components/web/reviews/ReviewsSection'), { ssr: false });
+const ReviewSummary = dynamic(() => import('@/components/web/reviews/ReviewSummary'), { ssr: false });
 import Image from 'next/image';
 import ImageGallery, { type MediaItem } from '@/components/web/product/ImageGallery';
 import UTMCapture from '@/components/web/landing/UTMCapture';
@@ -254,6 +257,29 @@ async function fetchLpData(slug: string) {
   } as const;
 }
 
+// Lightweight renderer for long-form sections (text/video/image)
+function Section({ item }: { item: { type?: string; title?: string | null; body?: string | null; media_refs?: string[] | null } }) {
+  const t = (item?.type || '').toLowerCase();
+  const title = item?.title || '';
+  const body = item?.body || '';
+  const media = Array.isArray(item?.media_refs) ? item!.media_refs! : [];
+  return (
+    <section className="space-y-2">
+      {title && <h3 className="text-lg font-medium">{title}</h3>}
+      {body && <div className="text-sm text-gray-700 whitespace-pre-wrap">{body}</div>}
+      {t === 'image' && media.length > 0 && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={media[0] as string} alt={title || 'section image'} className="w-full h-auto rounded border" />
+      )}
+      {t === 'video' && media.length > 0 && (
+        <video controls className="w-full h-auto rounded border">
+          <source src={media[0] as string} />
+        </video>
+      )}
+    </section>
+  );
+}
+
 export default async function LandingPage({ params }: { params: { slug: string } }) {
   const data = await fetchLpData(params.slug);
   if (!data) {
@@ -351,6 +377,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
             contentIdSource={contentIdSource as any}
             variantSkuMap={variantSkuMap}
           />
+          <ReviewSummary productId={product.id} />
         </div>
 
         {(specs && specs.length > 0) && (() => {
@@ -434,35 +461,22 @@ export default async function LandingPage({ params }: { params: { slug: string }
         {/* Bottom sections */}
         {sections && sections.length > 0 && (
           <section className="space-y-10">
-            {sections.map((s: any, idx: number) => (
-              <div key={idx}>
-                {s.title && <h2 className="text-xl font-medium mb-2">{s.title}</h2>}
-                {s.type === 'rich_text' && (
-                  <div className="prose max-w-none" dangerouslySetInnerHTML={{ __html: s.body || '' }} />
-                )}
-                {s.type === 'image' && Array.isArray(s.media_refs) && s.media_refs.length > 0 && (
-                  <div className="relative w-full">
-                    <Image src={s.media_refs[0]} alt={s.title || 'Section image'} width={1200} height={800} className="w-full h-auto" />
-                  </div>
-                )}
-                {s.type === 'gallery' && Array.isArray(s.media_refs) && (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {s.media_refs.map((u: string, i: number) => (
-                      <div key={i} className="relative w-full aspect-[1/1] border rounded overflow-hidden">
-                        <Image src={u} alt={s.title || `Image ${i+1}`} fill className="object-cover" />
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {s.type === 'video' && Array.isArray(s.media_refs) && s.media_refs.length > 0 && (
-                  <video controls className="w-full h-auto">
-                    <source src={s.media_refs[0]} />
-                  </video>
-                )}
-              </div>
+            {(sections || []).map((s: any, idx: number) => (
+              <Section key={idx} item={s} />
             ))}
           </section>
         )}
+
+        {/* Hide floating CTA near reviews on mobile */}
+        <div id="lp-bottom-sentinel" className="h-1"></div>
+        {/* Extra spacer so the floating Buy panel doesn't cover the top of reviews on mobile */}
+        <div className="h-28 lg:h-0"></div>
+        {/* Reviews */}
+        <div className="pt-4">
+          <ReviewsSection productId={product.id} />
+        </div>
+        {/* Mobile-only footer spacer with small text */}
+        <div className="block lg:hidden text-center text-xs text-gray-400 py-28">afalstore</div>
       </div>
 
       {/* Right: Sticky Buy panel (desktop only) */}
@@ -483,10 +497,10 @@ export default async function LandingPage({ params }: { params: { slug: string }
             chatFacebookUrl={((product as any).chat_enabled ? (product as any).chat_facebook_url : null) as string | null}
             chatInstagramUrl={((product as any).chat_enabled ? (product as any).chat_instagram_url : null) as string | null}
           />
+          <ReviewSummary productId={product.id} />
         </div>
       </aside>
-      {/* Sentinel to hide floating CTA near page end */}
-      <div id="lp-bottom-sentinel" className="h-1"></div>
+      {/* (sentinel moved above reviews) */}
       {/* JSON-LD: Product */}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
     </div>
