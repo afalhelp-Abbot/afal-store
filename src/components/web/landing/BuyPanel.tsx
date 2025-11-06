@@ -27,10 +27,65 @@ type BuyPanelProps = {
 };
 
 export default function BuyPanel({ colors, models, packages, sizes, matrix, colorThumbs, logoUrl, specialMessage, darazUrl, darazTrustLine, chatFacebookUrl, chatInstagramUrl, contentIdSource, variantSkuMap }: BuyPanelProps) {
+  // Helpers to compute availability for an option under current constraints
+  const availabilityForColor = React.useCallback((c: string) => {
+    return Object.entries(matrix)
+      .filter(([k]) => k.startsWith(`${c}|`))
+      .reduce((acc, [, v]) => acc + (v?.availability ?? 0), 0);
+  }, [matrix]);
+  const availabilityForModel = React.useCallback((m: string, color: string, pkg: string, size: string) => {
+    const key = `${color || ''}|${m || ''}|${packages.length ? pkg : ''}|${sizes.length ? size : ''}`;
+    return matrix[key]?.availability ?? 0;
+  }, [matrix, packages.length, sizes.length]);
+  const availabilityForPackage = React.useCallback((p: string, color: string, model: string, size: string) => {
+    const key = `${color || ''}|${models.length ? model : ''}|${p || ''}|${sizes.length ? size : ''}`;
+    return matrix[key]?.availability ?? 0;
+  }, [matrix, models.length, sizes.length]);
+  const availabilityForSize = React.useCallback((s: string, color: string, model: string, pkg: string) => {
+    const key = `${color || ''}|${models.length ? model : ''}|${packages.length ? pkg : ''}|${s || ''}`;
+    return matrix[key]?.availability ?? 0;
+  }, [matrix, models.length, packages.length]);
+
+  // Current selections (initialize to first entry; we will auto-correct to first available in effects)
   const [selectedColor, setSelectedColor] = React.useState<string>(colors[0] || '');
   const [selectedModel, setSelectedModel] = React.useState<string>(models[0] || '');
   const [selectedPackage, setSelectedPackage] = React.useState<string>(packages[0] || '');
   const [selectedSize, setSelectedSize] = React.useState<string>(sizes[0] || '');
+
+  // Sort options so in-stock options come first
+  const sortedColors: string[] = React.useMemo(() => {
+    return [...colors].sort((a, b) => {
+      const ab = availabilityForColor(b);
+      const aa = availabilityForColor(a);
+      if ((ab > 0) !== (aa > 0)) return ab > 0 ? -1 : 1; // in-stock first
+      return ab - aa; // higher availability first
+    });
+  }, [colors, availabilityForColor]);
+  const sortedModels: string[] = React.useMemo(() => {
+    return [...models].sort((a, b) => {
+      const ab = availabilityForModel(b, selectedColor, selectedPackage || '', selectedSize || '');
+      const aa = availabilityForModel(a, selectedColor, selectedPackage || '', selectedSize || '');
+      if ((ab > 0) !== (aa > 0)) return ab > 0 ? -1 : 1;
+      return ab - aa;
+    });
+  }, [models, availabilityForModel, selectedColor, selectedPackage, selectedSize]);
+  const sortedPackages: string[] = React.useMemo(() => {
+    return [...packages].sort((a, b) => {
+      const ab = availabilityForPackage(b, selectedColor, selectedModel || '', selectedSize || '');
+      const aa = availabilityForPackage(a, selectedColor, selectedModel || '', selectedSize || '');
+      if ((ab > 0) !== (aa > 0)) return ab > 0 ? -1 : 1;
+      return ab - aa;
+    });
+  }, [packages, availabilityForPackage, selectedColor, selectedModel, selectedSize]);
+  const sortedSizes: string[] = React.useMemo(() => {
+    return [...sizes].sort((a, b) => {
+      const ab = availabilityForSize(b, selectedColor, selectedModel || '', selectedPackage || '');
+      const aa = availabilityForSize(a, selectedColor, selectedModel || '', selectedPackage || '');
+      if ((ab > 0) !== (aa > 0)) return ab > 0 ? -1 : 1;
+      return ab - aa;
+    });
+  }, [sizes, availabilityForSize, selectedColor, selectedModel, selectedPackage]);
+  
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [showReturns, setShowReturns] = React.useState(false);
   const panelRef = React.useRef<HTMLDivElement | null>(null);
@@ -38,17 +93,25 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
   const [nearBottom, setNearBottom] = React.useState(false);
 
   React.useEffect(() => {
-    if (!selectedColor && colors.length) setSelectedColor(colors[0]);
-  }, [colors, selectedColor]);
+    const firstAvail = sortedColors.find((c) => availabilityForColor(c) > 0);
+    if (!selectedColor && sortedColors.length) setSelectedColor(firstAvail ?? sortedColors[0]);
+    else if (availabilityForColor(selectedColor) <= 0 && firstAvail) setSelectedColor(firstAvail);
+  }, [sortedColors, selectedColor, availabilityForColor]);
   React.useEffect(() => {
-    if (!selectedModel && models.length) setSelectedModel(models[0]);
-  }, [models, selectedModel]);
+    const firstAvail = sortedModels.find((m) => availabilityForModel(m, selectedColor, selectedPackage || '', selectedSize || '') > 0);
+    if (!selectedModel && sortedModels.length) setSelectedModel(firstAvail ?? sortedModels[0]);
+    else if (availabilityForModel(selectedModel, selectedColor, selectedPackage || '', selectedSize || '') <= 0 && firstAvail) setSelectedModel(firstAvail);
+  }, [sortedModels, selectedModel, availabilityForModel, selectedColor, selectedPackage, selectedSize]);
   React.useEffect(() => {
-    if (!selectedPackage && packages.length) setSelectedPackage(packages[0]);
-  }, [packages, selectedPackage]);
+    const firstAvail = sortedPackages.find((p) => availabilityForPackage(p, selectedColor, selectedModel || '', selectedSize || '') > 0);
+    if (!selectedPackage && sortedPackages.length) setSelectedPackage(firstAvail ?? sortedPackages[0]);
+    else if (availabilityForPackage(selectedPackage, selectedColor, selectedModel || '', selectedSize || '') <= 0 && firstAvail) setSelectedPackage(firstAvail);
+  }, [sortedPackages, selectedPackage, availabilityForPackage, selectedColor, selectedModel, selectedSize]);
   React.useEffect(() => {
-    if (!selectedSize && sizes.length) setSelectedSize(sizes[0]);
-  }, [sizes, selectedSize]);
+    const firstAvail = sortedSizes.find((s) => availabilityForSize(s, selectedColor, selectedModel || '', selectedPackage || '') > 0);
+    if (!selectedSize && sortedSizes.length) setSelectedSize(firstAvail ?? sortedSizes[0]);
+    else if (availabilityForSize(selectedSize, selectedColor, selectedModel || '', selectedPackage || '') <= 0 && firstAvail) setSelectedSize(firstAvail);
+  }, [sortedSizes, selectedSize, availabilityForSize, selectedColor, selectedModel, selectedPackage]);
 
   const key = `${selectedColor || ''}|${models.length ? selectedModel : ''}|${packages.length ? selectedPackage : ''}|${sizes.length ? selectedSize : ''}`;
   const entry = matrix[key];
@@ -124,7 +187,7 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
       <div>
         <div className="text-sm text-gray-600 mb-2">Color</div>
         <div className="flex flex-wrap gap-2">
-          {colors.map((c) => {
+          {sortedColors.map((c) => {
             const active = selectedColor === c;
             // compute availability across model/package for this color (sum of valid combos)
             const a = Object.entries(matrix)
@@ -154,12 +217,12 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
       </div>
 
       {/* Model selector: chips when <=3, dropdown otherwise. Hidden if <=1 option. */}
-      {models.length > 1 && (
+      {sortedModels.length > 1 && (
         <div>
           <div className="text-sm text-gray-600 mb-2">Model</div>
-          {models.length <= 3 ? (
+          {sortedModels.length <= 3 ? (
             <div className="flex flex-wrap gap-2">
-              {models.map((m) => {
+              {sortedModels.map((m) => {
                 const active = selectedModel === m;
                 // compute availability for this model in current color/package/size context
                 const k = `${selectedColor || ''}|${m}|${packages.length ? selectedPackage : ''}|${sizes.length ? selectedSize : ''}`;
@@ -180,7 +243,7 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
             </div>
           ) : (
             <select value={selectedModel} onChange={(e)=>setSelectedModel(e.target.value)} className="border rounded px-3 py-2">
-              {models.map((m) => (
+              {sortedModels.map((m) => (
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
@@ -189,11 +252,11 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
       )}
 
       {/* Package selector: hidden if <=1 option. */}
-      {packages.length > 1 && (
+      {sortedPackages.length > 1 && (
         <div>
           <div className="text-sm text-gray-600 mb-2">Package</div>
           <div className="flex flex-wrap gap-2">
-            {packages.map((p) => {
+            {sortedPackages.map((p) => {
               const active = selectedPackage === p;
               const k = `${selectedColor || ''}|${models.length ? selectedModel : ''}|${p}|${sizes.length ? selectedSize : ''}`;
               const a = matrix[k]?.availability ?? 0;
@@ -215,11 +278,11 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
       )}
 
       {/* Size selector: hidden if <=1 option. */}
-      {sizes.length > 1 && (
+      {sortedSizes.length > 1 && (
         <div>
           <div className="text-sm text-gray-600 mb-2">Size</div>
           <div className="flex flex-wrap gap-2">
-            {sizes.map((s) => {
+            {sortedSizes.map((s) => {
               const active = selectedSize === s;
               const k = `${selectedColor || ''}|${models.length ? selectedModel : ''}|${packages.length ? selectedPackage : ''}|${s}`;
               const a = matrix[k]?.availability ?? 0;
