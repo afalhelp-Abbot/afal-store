@@ -92,17 +92,26 @@ async function fetchLpData(slug: string) {
     .eq('active', true)
     .order('price', { ascending: true });
 
-  // 3) Inventory for availability
-  const { data: inv } = await supabase
-    .from('inventory')
-    .select('variant_id, stock_on_hand, reserved');
-
+  // 3) Availability via view (derived Reserved from open orders)
+  // Build list of SKUs for the product's active variants, then read availability per SKU from inventory_overview
+  const skusForProduct = (variants ?? []).map((v: any) => v.sku).filter(Boolean);
   const availabilityByVariant: Record<string, number> = {};
-  for (const row of inv ?? []) {
-    const vId = (row as any).variant_id as string;
-    const on = Number((row as any).stock_on_hand) || 0;
-    const res = Number((row as any).reserved) || 0;
-    availabilityByVariant[vId] = on - res;
+  if (skusForProduct.length) {
+    const { data: invView } = await supabase
+      .from('inventory_overview')
+      .select('sku, available')
+      .in('sku', skusForProduct);
+    const availBySku = new Map<string, number>();
+    for (const row of invView ?? []) {
+      const sku = (row as any).sku as string;
+      const avail = Number((row as any).available) || 0;
+      availBySku.set(sku, avail);
+    }
+    for (const v of variants ?? []) {
+      const sku = (v as any).sku as string;
+      const id = (v as any).id as string;
+      availabilityByVariant[id] = availBySku.get(sku) ?? 0;
+    }
   }
 
   // 4) Map variant -> option values (Color/Model/Package)
