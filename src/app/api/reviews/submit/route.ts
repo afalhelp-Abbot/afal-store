@@ -58,49 +58,65 @@ export async function POST(req: Request) {
     if (!phone) return NextResponse.json({ ok: false, error: "phone_required" }, { status: 400 });
 
     // Match shipped order for this product and phone (allow formatting differences)
-    // First check web orders (order_lines), then admin orders (order_items)
     const submittedDigits = digitsOnly(phone);
     let matchedOrderId: string | null = null;
 
-    // Web orders path
-    if (!matchedOrderId) {
-      const { data: shippedWeb } = await supabase
-        .from('order_lines')
-        .select('order_id, orders!inner(id, phone, status), variants!inner(product_id)')
-        .eq('orders.status', 'shipped')
-        .eq('variants.product_id', product_id)
-        .limit(200);
-      for (const row of shippedWeb || []) {
-        const ord = (row as any).orders as any;
-        const ordDigits = digitsOnly(ord?.phone || '');
-        if (ordDigits === submittedDigits || (ordDigits.endsWith(submittedDigits.slice(-10)) && submittedDigits.length >= 10)) {
-          matchedOrderId = (row as any).order_id as string;
-          break;
-        }
+    // Gather shipped orders and match by last-10 digits in memory to avoid relying on SQL regex support here
+    const { data: shippedOrders } = await supabase
+      .from('orders')
+      .select('id, phone, status')
+      .eq('status', 'shipped')
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    const candidateOrderIds: string[] = [];
+    for (const o of shippedOrders || []) {
+      const ord = o as any;
+      const ordDigits = digitsOnly(ord?.phone || '');
+      if (ordDigits === submittedDigits || (ordDigits.endsWith(submittedDigits.slice(-10)) && submittedDigits.length >= 10)) {
+        candidateOrderIds.push(ord.id as string);
       }
     }
 
-    // Admin orders path
-    if (!matchedOrderId) {
-      const { data: shippedAdmin } = await supabase
-        .from('order_items')
-        .select('order_id, orders!inner(id, phone, status), variants!inner(product_id)')
-        .eq('orders.status', 'shipped')
-        .eq('variants.product_id', product_id)
-        .limit(200);
-      for (const row of shippedAdmin || []) {
-        const ord = (row as any).orders as any;
-        const ordDigits = digitsOnly(ord?.phone || '');
-        if (ordDigits === submittedDigits || (ordDigits.endsWith(submittedDigits.slice(-10)) && submittedDigits.length >= 10)) {
-          matchedOrderId = (row as any).order_id as string;
-          break;
-        }
+    if (candidateOrderIds.length === 0) {
+      return NextResponse.json({ ok: false, error: 'no_shipped_orders_for_phone' }, { status: 403 });
+    }
+
+    // Fetch order lines/items for those orders
+    const [webLinesRes, adminItemsRes] = await Promise.all([
+      supabase.from('order_lines').select('order_id, variant_id').in('order_id', candidateOrderIds).limit(1000),
+      supabase.from('order_items').select('order_id, variant_id').in('order_id', candidateOrderIds).limit(1000),
+    ]);
+
+    const webLines = (webLinesRes.data || []) as any[];
+    const adminItems = (adminItemsRes.data || []) as any[];
+    const all = [...webLines, ...adminItems];
+    const variantIds = Array.from(new Set(all.map(r => (r as any).variant_id).filter(Boolean)));
+
+    if (variantIds.length === 0) {
+      return NextResponse.json({ ok: false, error: 'no_items_for_orders' }, { status: 403 });
+    }
+
+    // Map variants to product_ids
+    const { data: vrows } = await supabase
+      .from('variants')
+      .select('id, product_id')
+      .in('id', variantIds)
+      .limit(1000);
+    const vById = new Map<string, string>();
+    for (const v of vrows || []) vById.set((v as any).id, (v as any).product_id);
+
+    // Find a candidate with same product_id
+    for (const r of all) {
+      const pid = vById.get((r as any).variant_id);
+      if (pid && pid === product_id) {
+        matchedOrderId = (r as any).order_id as string;
+        break;
       }
     }
 
     if (!matchedOrderId) {
-      // reject silently or return a specific error
-      return NextResponse.json({ ok: false, error: "no_shipped_order_found" }, { status: 403 });
+      return NextResponse.json({ ok: false, error: 'no_shipped_order_for_this_product' }, { status: 403 });
     }
 
     const phone_hash = sha256LowerTrim(phone);

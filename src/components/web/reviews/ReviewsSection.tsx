@@ -25,7 +25,7 @@ export default function ReviewsSection({ productId }: { productId: string }) {
   const [title, setTitle] = React.useState<string>("");
   const [body, setBody] = React.useState<string>("");
   const [name, setName] = React.useState<string>("");
-  const [phone, setPhone] = React.useState<string>("");
+  const [phone, setPhone] = React.useState<string>(""); // last 10 digits only
   const [files, setFiles] = React.useState<File[]>([]);
   const [submitting, setSubmitting] = React.useState(false);
   const [msg, setMsg] = React.useState<string | null>(null);
@@ -77,7 +77,7 @@ export default function ReviewsSection({ productId }: { productId: string }) {
           title: title || undefined,
           body,
           author_name: name || undefined,
-          phone,
+          phone: (phone ? `+92${phone.replace(/\D/g,'')}` : ''),
           images: urls,
         })
       });
@@ -169,9 +169,22 @@ export default function ReviewsSection({ productId }: { productId: string }) {
               <div>
                 <textarea value={body} onChange={(e)=>setBody(e.target.value)} minLength={20} maxLength={800} placeholder="Your review (20–800 characters)" className="border rounded-md px-3 py-2 w-full h-28" />
               </div>
-              <div className="flex gap-2">
-                <input value={name} onChange={(e)=>setName(e.target.value)} maxLength={60} placeholder="Your name (optional)" className="border rounded-md px-3 py-2 w-full" />
-                <input value={phone} onChange={(e)=>setPhone(e.target.value)} placeholder="Phone (required to verify)" className="border rounded-md px-3 py-2 w-full" />
+              <div className="space-y-1">
+                <div className="flex flex-nowrap items-stretch w-full">
+                  <span className="inline-flex items-center justify-center px-2 border border-r-0 rounded-l-md text-sm text-gray-600 bg-gray-50 shrink-0 min-w-[44px]">+92</span>
+                  <input
+                    value={phone}
+                    onChange={(e)=>{
+                      const digits = e.target.value.replace(/\D/g,'').slice(0,10);
+                      setPhone(digits);
+                    }}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="3xxxxxxxxx"
+                    className="border rounded-r-md px-3 py-2 w-full border-l-0"
+                  />
+                </div>
+                <div className="text-xs text-gray-500">Enter last 10 digits only (3xxxxxxxxx)</div>
               </div>
               <div>
                 <input type="file" multiple accept="image/*" onChange={onFileChange} />
