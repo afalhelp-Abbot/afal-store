@@ -252,20 +252,20 @@ export default function ImageGallery({ items, className }: Props) {
                 className={`relative border rounded overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                   i === safeIndex ? 'ring-2 ring-blue-500' : ''
                 }`}
-                style={{ width: 64, height: 64, flex: '0 0 auto' }}
+                style={{ width: 56, height: 56, flex: '0 0 auto' }}
               >
                 {it.type === 'image' ? (
                   <Image
                     src={(it.thumb ?? it.src) as any}
                     alt={it.alt ?? `Thumbnail ${i + 1}`}
                     fill
-                    sizes="64px"
+                    sizes="56px"
                     className="object-cover"
                   />
                 ) : (
                   <>
                     {autoPosters[i] ? (
-                      <Image src={autoPosters[i]} alt={it.alt ?? `Thumbnail ${i + 1}`} fill sizes="64px" className="object-cover" />
+                      <Image src={autoPosters[i]} alt={it.alt ?? `Thumbnail ${i + 1}`} fill sizes="56px" className="object-cover" />
                     ) : (
                       <div className="w-full h-full grid place-items-center bg-black text-white text-xs">VID</div>
                     )}

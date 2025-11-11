@@ -317,7 +317,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-12 items-start">
+    <div className="max-w-6xl mx-auto p-4 sm:p-5 md:p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-6 sm:gap-8 lg:gap-8 items-start">
       <UTMCapture />
       {/* Meta Pixel: ViewContent */}
       <LPViewPixel
@@ -332,8 +332,8 @@ export default async function LandingPage({ params }: { params: { slug: string }
         } : null}
       />
       {/* Page title spans both columns on desktop so aside aligns with gallery, not the title */}
-      <header className="space-y-2 lg:col-span-2 mb-3 lg:mb-4">
-        <div className="flex flex-col items-center text-center gap-2 lg:flex-row lg:items-center lg:text-left lg:gap-4">
+      <header className="space-y-1 lg:col-span-2 mb-2 lg:mb-2">
+        <div className="flex flex-row items-center text-left gap-3 lg:flex-row lg:items-center lg:text-left lg:gap-4">
           {product.logo_url && (
             <img
               src={product.logo_url as string}
@@ -342,13 +342,13 @@ export default async function LandingPage({ params }: { params: { slug: string }
             />
           )}
           <div>
-            <h1 className="text-xl lg:text-3xl font-semibold max-w-[36ch] leading-tight">{product.name}</h1>
+            <h1 className="text-base sm:text-lg lg:text-2xl font-semibold max-w-[36ch] leading-tight">{product.name}</h1>
             <p className="text-sm text-gray-600 mt-1">Cash on Delivery · 24–48h Dispatch · Easy Returns</p>
           </div>
         </div>
       </header>
       {/* Left: Gallery + Content */}
-      <div className="space-y-8">
+      <div className="space-y-5 lg:space-y-8">
 
         {/* Media Gallery */}
         <section>
@@ -460,7 +460,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
 
         {/* Bottom sections */}
         {sections && sections.length > 0 && (
-          <section className="space-y-10">
+          <section className="space-y-8 lg:space-y-10">
             {(sections || []).map((s: any, idx: number) => (
               <Section key={idx} item={s} />
             ))}
@@ -470,7 +470,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
         {/* Hide floating CTA near reviews on mobile */}
         <div id="lp-bottom-sentinel" className="h-1"></div>
         {/* Extra spacer so the floating Buy panel doesn't cover the top of reviews on mobile */}
-        <div className="h-28 lg:h-0"></div>
+        <div className="h-16 lg:h-0"></div>
         {/* Reviews */}
         <div className="pt-4">
           <ReviewsSection productId={product.id} />

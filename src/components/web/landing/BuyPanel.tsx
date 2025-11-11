@@ -91,6 +91,7 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
   const panelRef = React.useRef<HTMLDivElement | null>(null);
   const [showFloatCTA, setShowFloatCTA] = React.useState(false);
   const [nearBottom, setNearBottom] = React.useState(false);
+  const [showFullMsg, setShowFullMsg] = React.useState(false);
 
   React.useEffect(() => {
     const firstAvail = sortedColors.find((c) => availabilityForColor(c) > 0);
@@ -172,20 +173,19 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
   // No fade/delay per user request
 
   return (
-    <div ref={panelRef} className="border rounded p-4 space-y-4 shadow-sm">
-      {logoUrl && (
-        <div className="flex items-center mb-1">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
+    <div ref={panelRef} className="border rounded p-3 sm:p-4 space-y-3 sm:space-y-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        {logoUrl ? (
           <img src={logoUrl} alt="Logo" className="h-6 w-auto object-contain rounded border bg-white p-0.5" />
+        ) : <span />}
+        <div className="text-right">
+          <div className="text-xs sm:text-sm text-gray-600">Price</div>
+          <div className="text-2xl sm:text-2xl font-semibold">{price != null ? `PKR ${Number(price).toLocaleString()}` : '—'}</div>
         </div>
-      )}
-      <div>
-        <div className="text-sm text-gray-600">Price</div>
-        <div className="text-2xl font-semibold">{price != null ? `PKR ${Number(price).toLocaleString()}` : '—'}</div>
       </div>
 
       <div>
-        <div className="text-sm text-gray-600 mb-2">Color</div>
+        <div className="text-xs sm:text-sm text-gray-600 mb-2">Color{typeof avail === 'number' ? ` · ${avail > 0 ? `${avail} available` : 'Out of stock'}` : ''}</div>
         <div className="flex flex-wrap gap-2">
           {sortedColors.map((c) => {
             const active = selectedColor === c;
@@ -201,12 +201,12 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
                 onClick={() => setSelectedColor(c)}
                 disabled={disabled}
                 className={`rounded-full border text-sm flex items-center justify-center ${active ? 'ring-2 ring-black' : ''} ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'}`}
-                style={{ width: 40, height: 40, padding: 0, overflow: 'hidden', background: 'white' }}
+                style={{ width: 40, height: 40, padding: 2, overflow: 'hidden', background: 'white' }}
                 title={disabled ? 'Out of stock' : `${a} available`}
               >
                 {thumb ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={thumb} alt={c} width={40} height={40} style={{ objectFit: 'cover', width: '100%', height: '100%' }} />
+                  <img src={thumb} alt={c} width={36} height={36} style={{ objectFit: 'cover', width: 36, height: 36 }} />
                 ) : (
                   <span className={`px-3 py-2 ${active ? 'bg-black text-white' : 'bg-white'}`}>{c}</span>
                 )}
@@ -303,7 +303,7 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
         </div>
       )}
 
-      <div className="text-sm text-gray-600 flex items-center gap-2">
+      <div className="hidden sm:flex text-sm text-gray-600 items-center gap-2">
         {avail == null ? '' : (
           avail > 0 ? (
             <>
@@ -317,8 +317,22 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
       </div>
 
       {specialMessage && (
-        <div className="text-sm px-2.5 py-1.5 sm:px-3 sm:py-2 rounded border bg-emerald-50 text-emerald-800">
-          {specialMessage}
+        <div className="text-xs sm:text-sm px-2 py-1 sm:px-3 sm:py-2 rounded border bg-emerald-50 text-emerald-800">
+          {(() => {
+            const full = String(specialMessage);
+            const limit = 160;
+            const short = full.length > limit ? full.slice(0, limit).trimEnd() + '…' : full;
+            return (
+              <>
+                <span>{showFullMsg ? full : short}</span>
+                {full.length > limit && (
+                  <button onClick={() => setShowFullMsg(v=>!v)} className="ml-1 underline text-emerald-700">
+                    {showFullMsg ? 'less' : 'more'}
+                  </button>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -326,14 +340,14 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
         <button
           onClick={() => setDrawerOpen(true)}
           disabled={!anyAvailForSelection}
-          className={`w-full sm:w-auto rounded px-4 py-2 text-white ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
+          className={`w-full sm:w-auto rounded-lg px-4 py-1.5 text-white ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
         >
           Buy on AFAL
         </button>
         {/* Visual OR separator to distinguish choices */}
         {darazUrl && (
           <div className="flex items-center justify-center select-none text-gray-600">
-            <span className="px-2 text-sm font-semibold tracking-wide">— OR —</span>
+            <span className="px-2 text-xs sm:text-sm font-semibold tracking-wide">— OR —</span>
           </div>
         )}
         {darazUrl && (
@@ -354,7 +368,7 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
               }
             }}
             title="You will be redirected to Daraz. Price may differ."
-            className="w-full sm:w-auto px-3 sm:px-4 py-2 rounded bg-[#F57224] hover:bg-[#e86619] text-white inline-flex items-center justify-center gap-2 hover:ring-2 hover:ring-[#f9a66b]/50"
+            className="w-full sm:w-auto px-3 sm:px-4 py-1.5 rounded-lg bg-[#F57224] hover:bg-[#e86619] text-white inline-flex items-center justify-center gap-2 hover:ring-2 hover:ring-[#f9a66b]/50"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="opacity-90"><path d="M6 2a1 1 0 0 0-1 1v2H3a1 1 0 1 0 0 2h1l1.6 10.4A3 3 0 0 0 8.57 20H17a1 1 0 1 0 0-2H8.57a1 1 0 0 1-.99-.84L7.4 16H18a3 3 0 0 0 2.95-2.52l.9-5.4A1 1 0 0 0 20.88 6H7V3a1 1 0 0 0-1-1z"/></svg>
             Buy on Daraz.pk
@@ -364,7 +378,7 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
       </div>
 
       {/* Trust row */}
-      <div className="flex flex-wrap items-center gap-3 text-xs text-gray-600">
+      <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-600">
         <span className="inline-flex items-center gap-1"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 12H4"/><path d="M14 6l6 6-6 6"/></svg> Cash on Delivery</span>
         <span className="inline-flex items-center gap-1"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21V7a2 2 0 0 0-2-2h-3l-2-2H8L6 5H5a2 2 0 0 0-2 2v14z"/></svg> 24–48h Dispatch</span>
         <button type="button" onClick={()=>{ setShowReturns(true); try { track('ClickReturnsInfo'); } catch {} }} className="inline-flex items-center gap-1 hover:underline">
@@ -474,7 +488,7 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
               <button
                 onClick={() => setDrawerOpen(true)}
                 disabled={!anyAvailForSelection}
-                className={`w-full sm:w-auto rounded ${nearBottom ? 'px-6 py-3.5' : 'px-5 py-2.5'} text-white ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
+                className={`w-full sm:w-auto rounded-lg ${nearBottom ? 'px-6 py-3.5' : 'px-5 py-2.5'} text-white ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
               >
                 Buy on AFAL
               </button>
@@ -504,7 +518,7 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
                     }
                   }}
                   title="You will be redirected to Daraz. Price may differ."
-                  className={`w-full sm:w-auto rounded ${nearBottom ? 'px-6 py-3.5' : 'px-5 py-2.5'} bg-[#F57224] hover:bg-[#e86619] text-white inline-flex items-center justify-center gap-2`}
+                  className={`w-full sm:w-auto rounded-lg ${nearBottom ? 'px-6 py-3.5' : 'px-5 py-2.5'} bg-[#F57224] hover:bg-[#e86619] text-white inline-flex items-center justify-center gap-2`}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="opacity-90"><path d="M6 2a1 1 0 0 0-1 1v2H3a1 1 0 1 0 0 2h1l1.6 10.4A3 3 0 0 0 8.57 20H17a1 1 0 1 0 0-2H8.57a1 1 0 0 1-.99-.84L7.4 16H18a3 3 0 0 0 2.95-2.52l.9-5.4A1 1 0 0 0 20.88 6H7V3a1 1 0 0 0-1-1z"/></svg>
                   Buy on Daraz.pk

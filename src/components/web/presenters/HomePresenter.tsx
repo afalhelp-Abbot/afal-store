@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import ImageCarousel from './ImageCarousel';
 
 type HomePresenterProps = {
@@ -9,6 +10,7 @@ type HomePresenterProps = {
   startingPrice?: number | null;
   colorPrices?: Record<string, number>;
   colorAvailability?: Record<string, number>;
+  products?: { id: string; name: string; slug: string; fromPrice: number | null; image: string | null }[];
 };
 
 type ColorOption = {
@@ -17,7 +19,7 @@ type ColorOption = {
   tailwindClass: string;
 };
 
-export default function HomePresenter({ onAddToCart, startingPrice, colorPrices, colorAvailability }: HomePresenterProps) {
+export default function HomePresenter({ onAddToCart, startingPrice, colorPrices, colorAvailability, products }: HomePresenterProps) {
   const tealName = React.useMemo(() => (colorPrices && 'Teal' in (colorPrices ?? {}) && !('Teel' in (colorPrices ?? {})) ? 'Teal' : 'Teel'), [colorPrices]);
   const colorOptions: ColorOption[] = React.useMemo(() => ([
     { name: 'Black', value: '#000000', tailwindClass: 'bg-black' },
@@ -336,6 +338,36 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
           </div>
         </div>
       </div>
+      {/* Products Grid (scalable) */}
+      {Array.isArray(products) && products.length > 0 && (
+        <div className="py-16 bg-white/50">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold text-blue-900">Products</h3>
+              <a href="/products" className="text-blue-700 hover:text-blue-900 text-sm font-medium">View all</a>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {products.map((p) => (
+                <Link key={p.id} href={`/lp/${p.slug}`} className="group rounded-xl border border-blue-100 bg-white hover:shadow-md transition-shadow overflow-hidden">
+                  <div className="aspect-[4/3] w-full bg-blue-50 grid place-items-center overflow-hidden">
+                    {p.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform" />
+                    ) : (
+                      <div className="text-blue-300">No image</div>
+                    )}
+                  </div>
+                  <div className="p-4 space-y-1">
+                    <div className="font-medium text-blue-900 truncate">{p.name}</div>
+                    <div className="text-sm text-blue-700">{p.fromPrice != null ? `From PKR ${Number(p.fromPrice).toLocaleString()}` : 'Price coming soon'}</div>
+                    <div className="pt-2 text-sm text-blue-600 group-hover:text-blue-800 font-medium">View product →</div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
