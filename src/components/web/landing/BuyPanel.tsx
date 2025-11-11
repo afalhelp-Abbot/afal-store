@@ -173,14 +173,14 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
   // No fade/delay per user request
 
   return (
-    <div ref={panelRef} className="border rounded p-3 sm:p-4 space-y-3 sm:space-y-4 shadow-sm">
+    <div ref={panelRef} className="border rounded-md p-2.5 sm:p-4 space-y-2.5 sm:space-y-4 shadow-sm">
       <div className="flex items-center justify-between">
         {logoUrl ? (
-          <img src={logoUrl} alt="Logo" className="h-6 w-auto object-contain rounded border bg-white p-0.5" />
-        ) : <span />}
+          <img src={logoUrl} alt="Logo" className="hidden sm:block h-6 w-auto object-contain rounded border bg-white p-0.5" />
+        ) : <span className="hidden sm:block" />}
         <div className="text-right">
-          <div className="text-xs sm:text-sm text-gray-600">Price</div>
-          <div className="text-2xl sm:text-2xl font-semibold">{price != null ? `PKR ${Number(price).toLocaleString()}` : '—'}</div>
+          <div className="hidden sm:block text-xs sm:text-sm text-gray-600">Price</div>
+          <div className="text-2xl font-semibold whitespace-nowrap">{price != null ? `PKR ${Number(price).toLocaleString()}` : '—'}</div>
         </div>
       </div>
 

@@ -317,7 +317,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-4 sm:p-5 md:p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-6 sm:gap-8 lg:gap-8 items-start">
+    <div className="max-w-6xl mx-auto p-3 sm:p-5 md:p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-3 sm:gap-6 lg:gap-8 items-start">
       <UTMCapture />
       {/* Meta Pixel: ViewContent */}
       <LPViewPixel
@@ -332,23 +332,23 @@ export default async function LandingPage({ params }: { params: { slug: string }
         } : null}
       />
       {/* Page title spans both columns on desktop so aside aligns with gallery, not the title */}
-      <header className="space-y-1 lg:col-span-2 mb-2 lg:mb-2">
-        <div className="flex flex-row items-center text-left gap-3 lg:flex-row lg:items-center lg:text-left lg:gap-4">
+      <header className="space-y-0.5 lg:col-span-2 mb-1 lg:mb-2">
+        <div className="flex flex-row items-center text-left gap-2.5 lg:flex-row lg:items-center lg:text-left lg:gap-4">
           {product.logo_url && (
             <img
               src={product.logo_url as string}
               alt="Logo"
-              className="h-10 lg:h-14 w-auto object-contain rounded border bg-white p-1 shadow-sm"
+              className="h-9 lg:h-14 w-auto object-contain rounded border bg-white p-1 shadow-sm"
             />
           )}
           <div>
-            <h1 className="text-base sm:text-lg lg:text-2xl font-semibold max-w-[36ch] leading-tight">{product.name}</h1>
-            <p className="text-sm text-gray-600 mt-1">Cash on Delivery · 24–48h Dispatch · Easy Returns</p>
+            <h1 className="text-sm sm:text-lg lg:text-2xl font-semibold max-w-[36ch] leading-tight">{product.name}</h1>
+            <p className="text-xs sm:text-sm text-gray-600 mt-0.5">Cash on Delivery · 24–48h Dispatch · Easy Returns</p>
           </div>
         </div>
       </header>
       {/* Left: Gallery + Content */}
-      <div className="space-y-5 lg:space-y-8">
+      <div className="space-y-4 lg:space-y-8">
 
         {/* Media Gallery */}
         <section>

@@ -178,7 +178,7 @@ export default function ImageGallery({ items, className }: Props) {
       <div className="order-1 md:order-2">
         <div
           ref={mainRef}
-          className="relative w-full md:w-[75%] mx-auto aspect-[1/1] md:aspect-[1/1] bg-white rounded overflow-hidden group shadow-sm"
+          className="relative w-[92%] sm:w-[90%] md:w-[75%] mx-auto aspect-[4/5] md:aspect-[1/1] bg-transparent md:bg-white rounded-none md:rounded overflow-hidden group shadow-none md:shadow-sm"
         >
           {items[safeIndex].type === "image" ? (
             <>
@@ -226,7 +226,7 @@ export default function ImageGallery({ items, className }: Props) {
             <button
               aria-label="Previous image"
               onClick={() => setIndex((i) => Math.max(i - 1, 0))}
-              className="absolute left-2 top-1/2 -translate-y-1/2 z-10 rounded-full bg-white/80 hover:bg-white shadow p-2"
+              className="absolute left-2 top-1/2 -translate-y-1/2 z-10 rounded-full bg-white/80 hover:bg-white shadow p-1.5 md:p-2"
             >
               <span className="block select-none">‹</span>
             </button>
@@ -235,15 +235,15 @@ export default function ImageGallery({ items, className }: Props) {
             <button
               aria-label="Next image"
               onClick={() => setIndex((i) => Math.min(i + 1, items.length - 1))}
-              className="absolute right-2 top-1/2 -translate-y-1/2 z-10 rounded-full bg-white/80 hover:bg-white shadow p-2"
+              className="absolute right-2 top-1/2 -translate-y-1/2 z-10 rounded-full bg-white/80 hover:bg-white shadow p-1.5 md:p-2"
             >
               <span className="block select-none">›</span>
             </button>
           )}
         </div>
         {/* Mobile thumbnails below */}
-        <div className="mt-3 md:hidden">
-          <div className="flex gap-2 overflow-x-auto">
+        <div className="mt-2 md:hidden">
+          <div className="flex gap-1.5 overflow-x-auto">
             {items.map((it, i) => (
               <button
                 key={i}
