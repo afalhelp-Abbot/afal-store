@@ -317,7 +317,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-24 items-start">
+    <div className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-12 items-start">
       <UTMCapture />
       {/* Meta Pixel: ViewContent */}
       <LPViewPixel
@@ -482,7 +482,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
       {/* Right: Sticky Buy panel (desktop only) */}
       <aside className="hidden lg:block">
         {/* Sticky Buy panel aligned with gallery top */}
-        <div className="lg:sticky lg:top-20 lg:ml-6">
+        <div className="lg:sticky lg:top-20">
           <BuyPanel
             colors={colors}
             models={models}

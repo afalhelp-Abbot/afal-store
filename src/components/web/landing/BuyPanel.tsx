@@ -47,10 +47,10 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
   }, [matrix, models.length, packages.length]);
 
   // Current selections (initialize to first entry; we will auto-correct to first available in effects)
-  const [selectedColor, setSelectedColor] = React.useState<string>(colors[0] || '');
-  const [selectedModel, setSelectedModel] = React.useState<string>(models[0] || '');
-  const [selectedPackage, setSelectedPackage] = React.useState<string>(packages[0] || '');
-  const [selectedSize, setSelectedSize] = React.useState<string>(sizes[0] || '');
+  const [selectedColor, setSelectedColor] = React.useState<string>('');
+  const [selectedModel, setSelectedModel] = React.useState<string>('');
+  const [selectedPackage, setSelectedPackage] = React.useState<string>('');
+  const [selectedSize, setSelectedSize] = React.useState<string>('');
 
   // Sort options so in-stock options come first
   const sortedColors: string[] = React.useMemo(() => {
@@ -328,8 +328,14 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
           disabled={!anyAvailForSelection}
           className={`w-full sm:w-auto rounded px-4 py-2 text-white ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
         >
-          Start Order
+          Buy on AFAL
         </button>
+        {/* Visual OR separator to distinguish choices */}
+        {darazUrl && (
+          <div className="flex items-center justify-center select-none text-gray-600">
+            <span className="px-2 text-sm font-semibold tracking-wide">— OR —</span>
+          </div>
+        )}
         {darazUrl && (
           <button
             onClick={() => {
@@ -347,19 +353,12 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
                 window.open(href, '_blank', 'noopener');
               }
             }}
+            title="You will be redirected to Daraz. Price may differ."
             className="w-full sm:w-auto px-3 sm:px-4 py-2 rounded bg-[#F57224] hover:bg-[#e86619] text-white inline-flex items-center justify-center gap-2 hover:ring-2 hover:ring-[#f9a66b]/50"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="opacity-90"><path d="M6 2a1 1 0 0 0-1 1v2H3a1 1 0 1 0 0 2h1l1.6 10.4A3 3 0 0 0 8.57 20H17a1 1 0 1 0 0-2H8.57a1 1 0 0 1-.99-.84L7.4 16H18a3 3 0 0 0 2.95-2.52l.9-5.4A1 1 0 0 0 20.88 6H7V3a1 1 0 0 0-1-1z"/></svg>
-            Buy on Daraz
+            Buy on Daraz.pk
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-90"><path d="M18 13v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></svg>
-          </button>
-        )}
-        {effectiveChatUrl && (
-          <button
-            onClick={() => { if (typeof window !== 'undefined' && effectiveChatUrl) { try { track('ClickChat', { url: effectiveChatUrl }); } catch {}; window.open(effectiveChatUrl, '_blank', 'noopener'); } }}
-            className="w-full sm:w-auto px-4 py-2 rounded border"
-          >
-            Chat
           </button>
         )}
       </div>
@@ -477,8 +476,17 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
                 disabled={!anyAvailForSelection}
                 className={`w-full sm:w-auto rounded ${nearBottom ? 'px-6 py-3.5' : 'px-5 py-2.5'} text-white ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
               >
-                Start Order
+                Buy on AFAL
               </button>
+              {darazUrl && (
+                <div className="flex items-center justify-center text-gray-600 select-none">
+                  {nearBottom ? (
+                    <span className="px-1 text-sm font-semibold tracking-wide">— OR —</span>
+                  ) : (
+                    <span className="px-1 text-sm font-semibold tracking-wide">OR</span>
+                  )}
+                </div>
+              )}
               {darazUrl && (
                 <button
                   onClick={() => {
@@ -495,10 +503,11 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
                       window.open(href, '_blank', 'noopener');
                     }
                   }}
+                  title="You will be redirected to Daraz. Price may differ."
                   className={`w-full sm:w-auto rounded ${nearBottom ? 'px-6 py-3.5' : 'px-5 py-2.5'} bg-[#F57224] hover:bg-[#e86619] text-white inline-flex items-center justify-center gap-2`}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="opacity-90"><path d="M6 2a1 1 0 0 0-1 1v2H3a1 1 0 1 0 0 2h1l1.6 10.4A3 3 0 0 0 8.57 20H17a1 1 0 1 0 0-2H8.57a1 1 0 0 1-.99-.84L7.4 16H18a3 3 0 0 0 2.95-2.52l.9-5.4A1 1 0 0 0 20.88 6H7V3a1 1 0 0 0-1-1z"/></svg>
-                  Daraz
+                  Buy on Daraz.pk
                 </button>
               )}
             </div>
