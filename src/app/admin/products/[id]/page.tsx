@@ -27,6 +27,11 @@ type Product = {
   chat_instagram_url?: string | null;
   special_message?: string | null;
   daraz_trust_line?: boolean;
+  fb_page_url?: string | null;
+  instagram_url?: string | null;
+  whatsapp_url?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
 };
 
 type Media = {
@@ -152,8 +157,16 @@ export default function EditProductPage() {
   const [chatInstagramUrl, setChatInstagramUrl] = useState<string>('');
   const [specialMessage, setSpecialMessage] = useState<string>('');
   const [darazTrustLine, setDarazTrustLine] = useState<boolean>(false);
+  const [ctaLabel, setCtaLabel] = useState<string>('');
+  const [ctaSize, setCtaSize] = useState<'small' | 'medium' | 'large'>('medium');
+  // Social media & contact state
+  const [fbPageUrl, setFbPageUrl] = useState<string>('');
+  const [instagramUrl, setInstagramUrl] = useState<string>('');
+  const [whatsappUrl, setWhatsappUrl] = useState<string>('');
+  const [contactEmail, setContactEmail] = useState<string>('');
+  const [contactPhone, setContactPhone] = useState<string>('');
   // snapshot of loaded basics
-  const [initialBasics, setInitialBasics] = useState<{ name: string; slug: string; active: boolean; descriptionEn: string; descriptionUr: string; logoUrl: string; darazEnabled: boolean; darazUrl: string; darazTrustLine: boolean; chatEnabled: boolean; chatFacebookUrl: string; chatInstagramUrl: string; specialMessage: string } | null>(null);
+  const [initialBasics, setInitialBasics] = useState<{ name: string; slug: string; active: boolean; descriptionEn: string; descriptionUr: string; logoUrl: string; darazEnabled: boolean; darazUrl: string; darazTrustLine: boolean; chatEnabled: boolean; chatFacebookUrl: string; chatInstagramUrl: string; specialMessage: string; fbPageUrl: string; instagramUrl: string; whatsappUrl: string; contactEmail: string; contactPhone: string; ctaLabel: string; ctaSize: 'small' | 'medium' | 'large' } | null>(null);
   // dirty flags for variants and add-variant form
   const [variantsDirtyFlag, setVariantsDirtyFlag] = useState(false);
   const [variantFormChangedFlag, setVariantFormChangedFlag] = useState(false);
@@ -166,7 +179,7 @@ export default function EditProductPage() {
       try {
         const { data: p, error: pErr } = await supabaseBrowser
           .from('products')
-          .select('id, name, slug, active, description_en, description_ur, logo_url, daraz_enabled, daraz_url, daraz_trust_line, chat_enabled, chat_facebook_url, chat_instagram_url, special_message')
+          .select('id, name, slug, active, description_en, description_ur, logo_url, daraz_enabled, daraz_url, daraz_trust_line, chat_enabled, chat_facebook_url, chat_instagram_url, special_message, fb_page_url, instagram_url, whatsapp_url, contact_email, contact_phone, cta_label, cta_size')
           .eq('id', params.id)
           .maybeSingle();
         if (pErr) throw pErr;
@@ -185,6 +198,13 @@ export default function EditProductPage() {
         setChatInstagramUrl((p as any).chat_instagram_url || '');
         setSpecialMessage((p as any).special_message || '');
         setDarazTrustLine(Boolean((p as any).daraz_trust_line));
+        setFbPageUrl((p as any).fb_page_url || '');
+        setInstagramUrl((p as any).instagram_url || '');
+        setWhatsappUrl((p as any).whatsapp_url || '');
+        setContactEmail((p as any).contact_email || '');
+        setContactPhone((p as any).contact_phone || '');
+        setCtaLabel((p as any).cta_label || '');
+        setCtaSize(((p as any).cta_size as 'small' | 'medium' | 'large') || 'medium');
         setInitialBasics({
           name: (p as any).name || '',
           slug: (p as any).slug || '',
@@ -199,6 +219,13 @@ export default function EditProductPage() {
           chatFacebookUrl: (p as any).chat_facebook_url || '',
           chatInstagramUrl: (p as any).chat_instagram_url || '',
           specialMessage: (p as any).special_message || '',
+          fbPageUrl: (p as any).fb_page_url || '',
+          instagramUrl: (p as any).instagram_url || '',
+          whatsappUrl: (p as any).whatsapp_url || '',
+          contactEmail: (p as any).contact_email || '',
+          contactPhone: (p as any).contact_phone || '',
+          ctaLabel: (p as any).cta_label || '',
+          ctaSize: (((p as any).cta_size as 'small' | 'medium' | 'large') || 'medium'),
         });
 
         const { data: m, error: mErr } = await supabaseBrowser
@@ -332,12 +359,19 @@ export default function EditProductPage() {
           chat_facebook_url: chatEnabled ? (chatFacebookUrl || null) : null,
           chat_instagram_url: chatEnabled ? (chatInstagramUrl || null) : null,
           special_message: specialMessage || null,
+          cta_label: ctaLabel || null,
+          cta_size: ctaSize || 'medium',
+          fb_page_url: fbPageUrl || null,
+          instagram_url: instagramUrl || null,
+          whatsapp_url: whatsappUrl || null,
+          contact_email: contactEmail || null,
+          contact_phone: contactPhone || null,
         })
         .eq('id', params.id);
       if (error) throw error;
       router.refresh();
       // update snapshot after successful save
-      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, darazTrustLine, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage });
+      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, darazTrustLine, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage, fbPageUrl, instagramUrl, whatsappUrl, contactEmail, contactPhone, ctaLabel, ctaSize });
     } catch (e: any) {
       setError(e?.message || 'Failed to save product');
     } finally {
@@ -361,9 +395,16 @@ export default function EditProductPage() {
       initialBasics.chatEnabled !== chatEnabled ||
       initialBasics.chatFacebookUrl !== chatFacebookUrl ||
       initialBasics.chatInstagramUrl !== chatInstagramUrl ||
-      initialBasics.specialMessage !== specialMessage
+      initialBasics.specialMessage !== specialMessage ||
+      initialBasics.fbPageUrl !== fbPageUrl ||
+      initialBasics.instagramUrl !== instagramUrl ||
+      initialBasics.whatsappUrl !== whatsappUrl ||
+      initialBasics.contactEmail !== contactEmail ||
+      initialBasics.contactPhone !== contactPhone ||
+      initialBasics.ctaLabel !== ctaLabel ||
+      initialBasics.ctaSize !== ctaSize
     );
-  }, [initialBasics, name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, darazTrustLine, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage]);
+  }, [initialBasics, name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, darazTrustLine, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage, fbPageUrl, instagramUrl, whatsappUrl, contactEmail, contactPhone, ctaLabel, ctaSize]);
 
   // beforeunload guard
   useEffect(() => {
@@ -391,6 +432,13 @@ export default function EditProductPage() {
     setChatFacebookUrl(initialBasics.chatFacebookUrl);
     setChatInstagramUrl(initialBasics.chatInstagramUrl);
     setSpecialMessage(initialBasics.specialMessage);
+    setFbPageUrl(initialBasics.fbPageUrl);
+    setInstagramUrl(initialBasics.instagramUrl);
+    setWhatsappUrl(initialBasics.whatsappUrl);
+    setContactEmail(initialBasics.contactEmail);
+    setContactPhone(initialBasics.contactPhone);
+    setCtaLabel(initialBasics.ctaLabel);
+    setCtaSize(initialBasics.ctaSize);
     // clear Add Variant form
     if (typeof document !== 'undefined') {
       ['v-sku','v-price','v-color','v-size','v-model','v-package'].forEach((id)=>{
@@ -442,14 +490,21 @@ export default function EditProductPage() {
           logo_url: logoUrl || null,
           daraz_enabled: darazEnabled,
           daraz_url: darazEnabled ? (darazUrl || null) : null,
+          daraz_trust_line: darazEnabled ? darazTrustLine : false,
           chat_enabled: chatEnabled,
           chat_facebook_url: chatEnabled ? (chatFacebookUrl || null) : null,
           chat_instagram_url: chatEnabled ? (chatInstagramUrl || null) : null,
           special_message: specialMessage || null,
+          cta_label: ctaLabel || null,
+          fb_page_url: fbPageUrl || null,
+          instagram_url: instagramUrl || null,
+          whatsapp_url: whatsappUrl || null,
+          contact_email: contactEmail || null,
+          contact_phone: contactPhone || null,
         })
         .eq('id', params.id);
       if (pErr) throw pErr;
-      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, darazTrustLine, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage });
+      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, darazTrustLine, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage, fbPageUrl, instagramUrl, whatsappUrl, contactEmail, contactPhone, ctaLabel, ctaSize });
 
       // 2) Add Variant (staged)
       const vf = readVariantForm();
@@ -1332,6 +1387,27 @@ export default function EditProductPage() {
           <div>
             <label className="block font-medium">Special message <HelpTip>Shown above the buttons in the checkout panel. Leave empty to hide.</HelpTip></label>
             <input value={specialMessage} onChange={(e)=>setSpecialMessage(e.target.value)} placeholder="e.g., Free delivery till Oct 31" className="mt-1 w-full border rounded px-3 py-2" />
+          </div>
+          <div>
+            <label className="block font-medium">CTA button label <HelpTip>Text for the main checkout button on the landing page. Defaults to "Buy on AFAL" if left empty, e.g. you can use "Order Now" or "Start Order".</HelpTip></label>
+            <input
+              value={ctaLabel}
+              onChange={(e)=>setCtaLabel(e.target.value)}
+              placeholder="Buy on AFAL"
+              className="mt-1 w-full border rounded px-3 py-2"
+            />
+          </div>
+          <div>
+            <label className="block font-medium">CTA button size <HelpTip>Controls how prominent the main checkout button appears on the landing page for this product.</HelpTip></label>
+            <select
+              value={ctaSize}
+              onChange={(e)=>setCtaSize((e.target.value as 'small' | 'medium' | 'large') || 'medium')}
+              className="mt-1 w-full border rounded px-3 py-2"
+            >
+              <option value="small">Small</option>
+              <option value="medium">Medium (default)</option>
+              <option value="large">Large</option>
+            </select>
           </div>
         </div>
         <div>

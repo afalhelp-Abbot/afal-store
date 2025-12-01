@@ -24,9 +24,11 @@ type BuyPanelProps = {
   // meta pixel support
   contentIdSource?: 'sku' | 'variant_id';
   variantSkuMap?: Record<string, string>;
+  ctaLabel?: string;
+  ctaSize?: 'small' | 'medium' | 'large';
 };
 
-export default function BuyPanel({ colors, models, packages, sizes, matrix, colorThumbs, logoUrl, specialMessage, darazUrl, darazTrustLine, chatFacebookUrl, chatInstagramUrl, contentIdSource, variantSkuMap }: BuyPanelProps) {
+export default function BuyPanel({ colors, models, packages, sizes, matrix, colorThumbs, logoUrl, specialMessage, darazUrl, darazTrustLine, chatFacebookUrl, chatInstagramUrl, contentIdSource, variantSkuMap, ctaLabel: ctaLabelProp, ctaSize }: BuyPanelProps) {
   // Helpers to compute availability for an option under current constraints
   const availabilityForColor = React.useCallback((c: string) => {
     return Object.entries(matrix)
@@ -171,6 +173,14 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
   }, []);
 
   // No fade/delay per user request
+
+  const ctaLabel = ctaLabelProp || 'Buy on AFAL';
+  const size = ctaSize || 'medium';
+  // Make size differences clearly visible
+  const mainCtaPadding = size === 'small' ? 'px-3 py-1' : size === 'large' ? 'px-7 py-3.5' : 'px-5 py-2';
+  const mainCtaText = size === 'small' ? 'text-xs' : size === 'large' ? 'text-lg' : 'text-sm';
+  const floatCtaPadding = size === 'small' ? 'px-4 py-1.5' : size === 'large' ? 'px-8 py-4' : 'px-6 py-2.5';
+  const floatCtaText = size === 'small' ? 'text-xs' : size === 'large' ? 'text-lg' : 'text-sm';
 
   return (
     <div ref={panelRef} className="border rounded-md p-2.5 sm:p-4 space-y-2.5 sm:space-y-4 shadow-sm">
@@ -340,9 +350,9 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
         <button
           onClick={() => setDrawerOpen(true)}
           disabled={!anyAvailForSelection}
-          className={`w-full sm:w-auto rounded-lg px-4 py-1.5 text-white ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
+          className={`w-full sm:w-auto rounded-lg ${mainCtaPadding} ${mainCtaText} text-white ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
         >
-          Buy on AFAL
+          {ctaLabel}
         </button>
         {/* Visual OR separator to distinguish choices */}
         {darazUrl && (
@@ -488,9 +498,9 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
               <button
                 onClick={() => setDrawerOpen(true)}
                 disabled={!anyAvailForSelection}
-                className={`w-full sm:w-auto rounded-lg ${nearBottom ? 'px-6 py-3.5' : 'px-5 py-2.5'} text-white ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
+                className={`w-full sm:w-auto rounded-lg ${nearBottom ? floatCtaPadding : floatCtaPadding} ${floatCtaText} text-white ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
               >
-                Buy on AFAL
+                {ctaLabel}
               </button>
               {darazUrl && (
                 <div className="flex items-center justify-center text-gray-600 select-none">

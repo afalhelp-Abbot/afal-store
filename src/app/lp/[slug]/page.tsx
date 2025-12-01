@@ -69,7 +69,7 @@ async function fetchLpData(slug: string) {
   // 1) Product by slug
   const { data: product } = await supabase
     .from('products')
-    .select('id, name, slug, description_en, description_ur, active, logo_url, daraz_enabled, daraz_url, daraz_trust_line, chat_enabled, chat_facebook_url, chat_instagram_url, special_message')
+    .select('id, name, slug, description_en, description_ur, active, logo_url, daraz_enabled, daraz_url, daraz_trust_line, chat_enabled, chat_facebook_url, chat_instagram_url, special_message, cta_label, cta_size')
     .eq('slug', slug)
     .eq('active', true)
     .maybeSingle();
@@ -289,6 +289,8 @@ export default async function LandingPage({ params }: { params: { slug: string }
   const { product, mediaItems, colors, models, packages, sizes, matrix, specs, sections, colorThumbs, variants, pixel } = data as any;
   const contentIdSource = (pixel && pixel.content_id_source === 'variant_id') ? 'variant_id' : 'sku';
   const variantSkuMap: Record<string, string> = Object.fromEntries(((variants||[]) as any[]).map((v:any)=>[v.id, v.sku]));
+  const ctaLabel = (product as any).cta_label || 'Buy on AFAL';
+  const ctaSize = ((product as any).cta_size as string | null) || 'medium';
 
   // Build Product JSON-LD for SEO
   const site = 'https://afalstore.com';
@@ -376,6 +378,8 @@ export default async function LandingPage({ params }: { params: { slug: string }
             chatInstagramUrl={((product as any).chat_enabled ? (product as any).chat_instagram_url : null) as string | null}
             contentIdSource={contentIdSource as any}
             variantSkuMap={variantSkuMap}
+            ctaLabel={ctaLabel}
+            ctaSize={ctaSize as any}
           />
           <ReviewSummary productId={product.id} />
         </div>
@@ -496,6 +500,8 @@ export default async function LandingPage({ params }: { params: { slug: string }
             darazTrustLine={Boolean((product as any).daraz_trust_line)}
             chatFacebookUrl={((product as any).chat_enabled ? (product as any).chat_facebook_url : null) as string | null}
             chatInstagramUrl={((product as any).chat_enabled ? (product as any).chat_instagram_url : null) as string | null}
+            ctaLabel={ctaLabel}
+            ctaSize={ctaSize as any}
           />
           <ReviewSummary productId={product.id} />
         </div>
