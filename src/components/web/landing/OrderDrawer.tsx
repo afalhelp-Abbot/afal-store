@@ -42,8 +42,12 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
   ];
 
   React.useEffect(() => {
-    if (!color && colors.length) setColor(colors[0]);
-  }, [colors, color]);
+  if (open && initialColor && initialColor !== color) {
+    setColor(initialColor);
+  } else if (!color && colors.length) {
+    setColor(colors[0]);
+  }
+}, [open, initialColor, colors, color]);
   React.useEffect(() => {
     if (!model && models.length) setModel(models[0]);
   }, [models, model]);
