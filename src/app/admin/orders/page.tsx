@@ -1,4 +1,4 @@
-import { requireAdmin } from '@/lib/auth';
+csimport { requireAdmin } from '@/lib/auth';
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
 import Link from 'next/link';
 
@@ -8,7 +8,7 @@ async function fetchOrders(search: Search) {
   const supabase = getSupabaseServerClient();
   let query = supabase
     .from('orders')
-    .select('id, status, customer_name, email, phone, address, city, province_code, created_at')
+    .select('id, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount')
     .order('created_at', { ascending: false })
     .limit(50);
 
@@ -50,7 +50,10 @@ async function fetchOrders(search: Search) {
     const key = String((ln as any).order_id);
     totals[key] = (totals[key] ?? 0) + Number((ln as any).line_total || 0);
   }
-  return (data ?? []).map((o) => ({ ...o, total: totals[String(o.id)] ?? 0 }));
+  return (data ?? []).map((o) => ({
+    ...o,
+    total: (totals[String(o.id)] ?? 0) + Number((o as any).shipping_amount || 0),
+  }));
 }
 
 export default async function OrdersPage({ searchParams }: { searchParams: Search }) {

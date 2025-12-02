@@ -49,10 +49,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing required customer fields' }, { status: 400 });
     }
     // Delegate atomic creation + reservation to Postgres function `place_order`
+    const shippingAmount = Number((body?.shipping?.amount as any) || 0);
     const { data, error } = await supabase.rpc('place_order', {
       p_customer: customer,
       p_items: items,
       p_utm: body?.utm ?? {},
+      p_shipping_amount: shippingAmount,
     });
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });

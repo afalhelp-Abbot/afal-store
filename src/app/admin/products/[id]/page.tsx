@@ -32,6 +32,11 @@ type Product = {
   whatsapp_url?: string | null;
   contact_email?: string | null;
   contact_phone?: string | null;
+  fb_page_enabled?: boolean | null;
+  instagram_enabled?: boolean | null;
+  whatsapp_enabled?: boolean | null;
+  contact_email_enabled?: boolean | null;
+  contact_phone_enabled?: boolean | null;
 };
 
 type Media = {
@@ -165,8 +170,13 @@ export default function EditProductPage() {
   const [whatsappUrl, setWhatsappUrl] = useState<string>('');
   const [contactEmail, setContactEmail] = useState<string>('');
   const [contactPhone, setContactPhone] = useState<string>('');
+  const [fbPageEnabled, setFbPageEnabled] = useState<boolean>(false);
+  const [instagramEnabled, setInstagramEnabled] = useState<boolean>(false);
+  const [whatsappEnabled, setWhatsappEnabled] = useState<boolean>(false);
+  const [contactEmailEnabled, setContactEmailEnabled] = useState<boolean>(false);
+  const [contactPhoneEnabled, setContactPhoneEnabled] = useState<boolean>(false);
   // snapshot of loaded basics
-  const [initialBasics, setInitialBasics] = useState<{ name: string; slug: string; active: boolean; descriptionEn: string; descriptionUr: string; logoUrl: string; darazEnabled: boolean; darazUrl: string; darazTrustLine: boolean; chatEnabled: boolean; chatFacebookUrl: string; chatInstagramUrl: string; specialMessage: string; fbPageUrl: string; instagramUrl: string; whatsappUrl: string; contactEmail: string; contactPhone: string; ctaLabel: string; ctaSize: 'small' | 'medium' | 'large' } | null>(null);
+  const [initialBasics, setInitialBasics] = useState<{ name: string; slug: string; active: boolean; descriptionEn: string; descriptionUr: string; logoUrl: string; darazEnabled: boolean; darazUrl: string; darazTrustLine: boolean; chatEnabled: boolean; chatFacebookUrl: string; chatInstagramUrl: string; specialMessage: string; fbPageUrl: string; instagramUrl: string; whatsappUrl: string; contactEmail: string; contactPhone: string; fbPageEnabled: boolean; instagramEnabled: boolean; whatsappEnabled: boolean; contactEmailEnabled: boolean; contactPhoneEnabled: boolean; ctaLabel: string; ctaSize: 'small' | 'medium' | 'large' } | null>(null);
   // dirty flags for variants and add-variant form
   const [variantsDirtyFlag, setVariantsDirtyFlag] = useState(false);
   const [variantFormChangedFlag, setVariantFormChangedFlag] = useState(false);
@@ -179,7 +189,7 @@ export default function EditProductPage() {
       try {
         const { data: p, error: pErr } = await supabaseBrowser
           .from('products')
-          .select('id, name, slug, active, description_en, description_ur, logo_url, daraz_enabled, daraz_url, daraz_trust_line, chat_enabled, chat_facebook_url, chat_instagram_url, special_message, fb_page_url, instagram_url, whatsapp_url, contact_email, contact_phone, cta_label, cta_size')
+          .select('id, name, slug, active, description_en, description_ur, logo_url, daraz_enabled, daraz_url, daraz_trust_line, chat_enabled, chat_facebook_url, chat_instagram_url, special_message, fb_page_url, instagram_url, whatsapp_url, contact_email, contact_phone, fb_page_enabled, instagram_enabled, whatsapp_enabled, contact_email_enabled, contact_phone_enabled, cta_label, cta_size')
           .eq('id', params.id)
           .maybeSingle();
         if (pErr) throw pErr;
@@ -203,6 +213,11 @@ export default function EditProductPage() {
         setWhatsappUrl((p as any).whatsapp_url || '');
         setContactEmail((p as any).contact_email || '');
         setContactPhone((p as any).contact_phone || '');
+        setFbPageEnabled(Boolean((p as any).fb_page_enabled));
+        setInstagramEnabled(Boolean((p as any).instagram_enabled));
+        setWhatsappEnabled(Boolean((p as any).whatsapp_enabled));
+        setContactEmailEnabled(Boolean((p as any).contact_email_enabled));
+        setContactPhoneEnabled(Boolean((p as any).contact_phone_enabled));
         setCtaLabel((p as any).cta_label || '');
         setCtaSize(((p as any).cta_size as 'small' | 'medium' | 'large') || 'medium');
         setInitialBasics({
@@ -224,6 +239,11 @@ export default function EditProductPage() {
           whatsappUrl: (p as any).whatsapp_url || '',
           contactEmail: (p as any).contact_email || '',
           contactPhone: (p as any).contact_phone || '',
+          fbPageEnabled: Boolean((p as any).fb_page_enabled),
+          instagramEnabled: Boolean((p as any).instagram_enabled),
+          whatsappEnabled: Boolean((p as any).whatsapp_enabled),
+          contactEmailEnabled: Boolean((p as any).contact_email_enabled),
+          contactPhoneEnabled: Boolean((p as any).contact_phone_enabled),
           ctaLabel: (p as any).cta_label || '',
           ctaSize: (((p as any).cta_size as 'small' | 'medium' | 'large') || 'medium'),
         });
@@ -366,12 +386,17 @@ export default function EditProductPage() {
           whatsapp_url: whatsappUrl || null,
           contact_email: contactEmail || null,
           contact_phone: contactPhone || null,
+          fb_page_enabled: fbPageEnabled,
+          instagram_enabled: instagramEnabled,
+          whatsapp_enabled: whatsappEnabled,
+          contact_email_enabled: contactEmailEnabled,
+          contact_phone_enabled: contactPhoneEnabled,
         })
         .eq('id', params.id);
       if (error) throw error;
       router.refresh();
       // update snapshot after successful save
-      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, darazTrustLine, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage, fbPageUrl, instagramUrl, whatsappUrl, contactEmail, contactPhone, ctaLabel, ctaSize });
+      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, darazTrustLine, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage, fbPageUrl, instagramUrl, whatsappUrl, contactEmail, contactPhone, fbPageEnabled, instagramEnabled, whatsappEnabled, contactEmailEnabled, contactPhoneEnabled, ctaLabel, ctaSize });
     } catch (e: any) {
       setError(e?.message || 'Failed to save product');
     } finally {
@@ -401,6 +426,11 @@ export default function EditProductPage() {
       initialBasics.whatsappUrl !== whatsappUrl ||
       initialBasics.contactEmail !== contactEmail ||
       initialBasics.contactPhone !== contactPhone ||
+      initialBasics.fbPageEnabled !== fbPageEnabled ||
+      initialBasics.instagramEnabled !== instagramEnabled ||
+      initialBasics.whatsappEnabled !== whatsappEnabled ||
+      initialBasics.contactEmailEnabled !== contactEmailEnabled ||
+      initialBasics.contactPhoneEnabled !== contactPhoneEnabled ||
       initialBasics.ctaLabel !== ctaLabel ||
       initialBasics.ctaSize !== ctaSize
     );
@@ -437,6 +467,11 @@ export default function EditProductPage() {
     setWhatsappUrl(initialBasics.whatsappUrl);
     setContactEmail(initialBasics.contactEmail);
     setContactPhone(initialBasics.contactPhone);
+    setFbPageEnabled(initialBasics.fbPageEnabled);
+    setInstagramEnabled(initialBasics.instagramEnabled);
+    setWhatsappEnabled(initialBasics.whatsappEnabled);
+    setContactEmailEnabled(initialBasics.contactEmailEnabled);
+    setContactPhoneEnabled(initialBasics.contactPhoneEnabled);
     setCtaLabel(initialBasics.ctaLabel);
     setCtaSize(initialBasics.ctaSize);
     // clear Add Variant form
@@ -501,10 +536,15 @@ export default function EditProductPage() {
           whatsapp_url: whatsappUrl || null,
           contact_email: contactEmail || null,
           contact_phone: contactPhone || null,
+          fb_page_enabled: fbPageEnabled,
+          instagram_enabled: instagramEnabled,
+          whatsapp_enabled: whatsappEnabled,
+          contact_email_enabled: contactEmailEnabled,
+          contact_phone_enabled: contactPhoneEnabled,
         })
         .eq('id', params.id);
       if (pErr) throw pErr;
-      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, darazTrustLine, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage, fbPageUrl, instagramUrl, whatsappUrl, contactEmail, contactPhone, ctaLabel, ctaSize });
+      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, darazTrustLine, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage, fbPageUrl, instagramUrl, whatsappUrl, contactEmail, contactPhone, fbPageEnabled, instagramEnabled, whatsappEnabled, contactEmailEnabled, contactPhoneEnabled, ctaLabel, ctaSize });
 
       // 2) Add Variant (staged)
       const vf = readVariantForm();
@@ -1408,6 +1448,110 @@ export default function EditProductPage() {
               <option value="medium">Medium (default)</option>
               <option value="large">Large</option>
             </select>
+          </div>
+        </div>
+        <div>
+          <button onClick={saveBasics} disabled={saving} className={`px-4 py-2 rounded text-white ${saving ? 'bg-gray-400' : 'bg-black hover:bg-gray-800'}`}>{saving ? 'Saving…' : 'Save'}</button>
+        </div>
+      </section>
+
+      {/* Social & Contact */}
+      <section className="space-y-4 border rounded p-4">
+        <h2 className="font-medium">Social & Contact</h2>
+        <div className="space-y-4 text-sm">
+          <div className="space-y-1">
+            <label className="block font-medium">Facebook Page</label>
+            <div className="flex items-center gap-2 mb-1">
+              <input
+                id="soc-fb-enabled"
+                type="checkbox"
+                checked={fbPageEnabled}
+                onChange={(e)=>setFbPageEnabled(e.target.checked)}
+              />
+              <label htmlFor="soc-fb-enabled">Show on LP</label>
+            </div>
+            <input
+              value={fbPageUrl}
+              onChange={(e)=>setFbPageUrl(e.target.value)}
+              placeholder="https://facebook.com/yourpage"
+              className="mt-1 w-full border rounded px-3 py-2"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="block font-medium">Instagram</label>
+            <div className="flex items-center gap-2 mb-1">
+              <input
+                id="soc-ig-enabled"
+                type="checkbox"
+                checked={instagramEnabled}
+                onChange={(e)=>setInstagramEnabled(e.target.checked)}
+              />
+              <label htmlFor="soc-ig-enabled">Show on LP</label>
+            </div>
+            <input
+              value={instagramUrl}
+              onChange={(e)=>setInstagramUrl(e.target.value)}
+              placeholder="https://instagram.com/yourprofile"
+              className="mt-1 w-full border rounded px-3 py-2"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="block font-medium">WhatsApp</label>
+            <div className="flex items-center gap-2 mb-1">
+              <input
+                id="soc-wa-enabled"
+                type="checkbox"
+                checked={whatsappEnabled}
+                onChange={(e)=>setWhatsappEnabled(e.target.checked)}
+              />
+              <label htmlFor="soc-wa-enabled">Show on LP</label>
+            </div>
+            <input
+              value={whatsappUrl}
+              onChange={(e)=>setWhatsappUrl(e.target.value)}
+              placeholder="https://wa.me/923xxxxxxxxx"
+              className="mt-1 w-full border rounded px-3 py-2"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="block font-medium">Support email</label>
+            <div className="flex items-center gap-2 mb-1">
+              <input
+                id="soc-email-enabled"
+                type="checkbox"
+                checked={contactEmailEnabled}
+                onChange={(e)=>setContactEmailEnabled(e.target.checked)}
+              />
+              <label htmlFor="soc-email-enabled">Show on LP</label>
+            </div>
+            <input
+              value={contactEmail}
+              onChange={(e)=>setContactEmail(e.target.value)}
+              placeholder="support@example.com"
+              className="mt-1 w-full border rounded px-3 py-2"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="block font-medium">Support phone</label>
+            <div className="flex items-center gap-2 mb-1">
+              <input
+                id="soc-phone-enabled"
+                type="checkbox"
+                checked={contactPhoneEnabled}
+                onChange={(e)=>setContactPhoneEnabled(e.target.checked)}
+              />
+              <label htmlFor="soc-phone-enabled">Show on LP</label>
+            </div>
+            <input
+              value={contactPhone}
+              onChange={(e)=>setContactPhone(e.target.value)}
+              placeholder="03xx-xxxxxxx"
+              className="mt-1 w-full border rounded px-3 py-2"
+            />
           </div>
         </div>
         <div>

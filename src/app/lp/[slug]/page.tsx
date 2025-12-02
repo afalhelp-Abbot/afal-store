@@ -7,6 +7,7 @@ import Image from 'next/image';
 import ImageGallery, { type MediaItem } from '@/components/web/product/ImageGallery';
 import UTMCapture from '@/components/web/landing/UTMCapture';
 import LPViewPixel from '@/components/web/pixel/LPViewPixel';
+import SocialLinks from '@/components/web/landing/SocialLinks';
 
 // Render helper: if the string looks like HTML, inject as HTML. Otherwise, render paragraphs
 // and preserve single line breaks. Urdu is rendered RTL with the Urdu font class.
@@ -69,7 +70,7 @@ async function fetchLpData(slug: string) {
   // 1) Product by slug
   const { data: product } = await supabase
     .from('products')
-    .select('id, name, slug, description_en, description_ur, active, logo_url, daraz_enabled, daraz_url, daraz_trust_line, chat_enabled, chat_facebook_url, chat_instagram_url, special_message, cta_label, cta_size')
+    .select('id, name, slug, description_en, description_ur, active, logo_url, daraz_enabled, daraz_url, daraz_trust_line, chat_enabled, chat_facebook_url, chat_instagram_url, special_message, cta_label, cta_size, fb_page_url, instagram_url, whatsapp_url, contact_email, contact_phone, fb_page_enabled, instagram_enabled, whatsapp_enabled, contact_email_enabled, contact_phone_enabled')
     .eq('slug', slug)
     .eq('active', true)
     .maybeSingle();
@@ -426,6 +427,22 @@ export default async function LandingPage({ params }: { params: { slug: string }
           )}
         </section>
 
+        {/* Social & Contact links (mobile first) */}
+        <div className="block lg:hidden">
+          <SocialLinks
+            fbPageUrl={(product as any).fb_page_url as string | null}
+            instagramUrl={(product as any).instagram_url as string | null}
+            whatsappUrl={(product as any).whatsapp_url as string | null}
+            contactEmail={(product as any).contact_email as string | null}
+            contactPhone={(product as any).contact_phone as string | null}
+            fbPageEnabled={Boolean((product as any).fb_page_enabled)}
+            instagramEnabled={Boolean((product as any).instagram_enabled)}
+            whatsappEnabled={Boolean((product as any).whatsapp_enabled)}
+            contactEmailEnabled={Boolean((product as any).contact_email_enabled)}
+            contactPhoneEnabled={Boolean((product as any).contact_phone_enabled)}
+          />
+        </div>
+
         {/* Specifications (dynamic) */}
         {specs && specs.length > 0 && (
           <section className="space-y-6">
@@ -504,6 +521,18 @@ export default async function LandingPage({ params }: { params: { slug: string }
             ctaSize={ctaSize as any}
           />
           <ReviewSummary productId={product.id} />
+          <SocialLinks
+            fbPageUrl={(product as any).fb_page_url as string | null}
+            instagramUrl={(product as any).instagram_url as string | null}
+            whatsappUrl={(product as any).whatsapp_url as string | null}
+            contactEmail={(product as any).contact_email as string | null}
+            contactPhone={(product as any).contact_phone as string | null}
+            fbPageEnabled={Boolean((product as any).fb_page_enabled)}
+            instagramEnabled={Boolean((product as any).instagram_enabled)}
+            whatsappEnabled={Boolean((product as any).whatsapp_enabled)}
+            contactEmailEnabled={Boolean((product as any).contact_email_enabled)}
+            contactPhoneEnabled={Boolean((product as any).contact_phone_enabled)}
+          />
         </div>
       </aside>
       {/* (sentinel moved above reviews) */}

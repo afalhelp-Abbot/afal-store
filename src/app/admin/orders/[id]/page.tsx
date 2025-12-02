@@ -7,7 +7,7 @@ async function fetchOrder(id: string) {
   const supabase = getSupabaseServerClient();
   const { data: order, error } = await supabase
     .from('orders')
-    .select('id, status, customer_name, email, phone, address, city, province_code, created_at')
+    .select('id, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount')
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;
@@ -20,8 +20,10 @@ async function fetchOrder(id: string) {
     .eq('order_id', id);
   if (linesError) throw linesError;
 
-  const total = (lines ?? []).reduce((sum, it: any) => sum + Number(it.line_total || 0), 0);
-  return { order, items: lines ?? [], total } as const;
+  const subtotal = (lines ?? []).reduce((sum, it: any) => sum + Number(it.line_total || 0), 0);
+  const shipping = Number((order as any).shipping_amount || 0);
+  const total = subtotal + shipping;
+  return { order, items: lines ?? [], total, subtotal, shipping } as const;
 }
 
 export default async function OrderDetailPage({ params }: { params: { id: string } }) {
@@ -39,7 +41,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
     );
   }
 
-  const { order, items, total } = result;
+  const { order, items, total, subtotal, shipping } = result as any;
 
   return (
     <div className="space-y-6">
@@ -98,8 +100,16 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                 </tbody>
                 <tfoot>
                   <tr>
+                    <td className="py-2 pr-4" colSpan={3}>Items subtotal</td>
+                    <td className="py-2 pr-4">{Number(subtotal || 0).toLocaleString()} PKR</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2 pr-4" colSpan={3}>Shipping</td>
+                    <td className="py-2 pr-4">{Number(shipping || 0).toLocaleString()} PKR</td>
+                  </tr>
+                  <tr>
                     <td className="py-2 pr-4 font-medium" colSpan={3}>Total</td>
-                    <td className="py-2 pr-4 font-medium">{total.toLocaleString()} PKR</td>
+                    <td className="py-2 pr-4 font-medium">{Number(total || 0).toLocaleString()} PKR</td>
                   </tr>
                 </tfoot>
               </table>
@@ -155,7 +165,7 @@ async function updateStatusAction(formData: FormData) {
   }
 
   const { data: items, error: itemsErr } = await supabase
-    .from('order_items')
+    .from('order_lines')
     .select('variant_id, qty')
     .eq('order_id', id);
   if (itemsErr) return { ok: false, message: itemsErr.message } as const;
