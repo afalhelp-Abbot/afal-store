@@ -85,9 +85,10 @@ export default async function HomeServerContainer() {
       .from('product_media')
       .select('url, type, sort')
       .eq('product_id', pid)
+      .eq('type', 'image')
       .order('sort', { ascending: true })
       .limit(1);
-    const image = (media && media.length && (media[0] as any).type === 'image') ? (media[0] as any).url as string : null;
+    const image = (media && media.length) ? (media[0] as any).url as string : null;
     productCards.push({ id: pid, name, slug, fromPrice, image });
   }
 

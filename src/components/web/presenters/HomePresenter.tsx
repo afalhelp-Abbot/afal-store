@@ -28,6 +28,9 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
     { name: tealName, value: '#14B8A6', tailwindClass: 'bg-teal-500' },
   ]), [tealName]);
   const [selectedColor, setSelectedColor] = React.useState<ColorOption>(colorOptions[0]);
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  const hasProducts = Array.isArray(products) && products.length > 0;
+  const activeProduct = hasProducts ? products[Math.max(0, Math.min(activeIndex, products.length - 1))] : null;
   const handleAdd = React.useCallback(() => {
     if (typeof onAddToCart === 'function') onAddToCart();
   }, [onAddToCart]);
@@ -42,8 +45,8 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
               <span className="text-blue-700 tracking-wide uppercase text-sm font-medium">Ultimate Shopping Store</span>
             </div>
             <nav className="flex items-center space-x-8">
-              <a href="#" className="text-blue-700 hover:text-blue-800 font-medium transition-colors">Products</a>
-              <a href="#" className="text-blue-700 hover:text-blue-800 font-medium transition-colors">Track Order</a>
+              <Link href="/products" className="text-blue-700 hover:text-blue-800 font-medium transition-colors">Products</Link>
+              <Link href="/track-order" className="text-blue-700 hover:text-blue-800 font-medium transition-colors">Track Order</Link>
               <button className="text-blue-700 hover:text-blue-800 relative group">
                 <svg className="w-6 h-6 transform group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
@@ -58,7 +61,7 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
           <div className="text-white space-y-8">
-            <h2 className="text-4xl sm:text-5xl font-bold text-blue-900">Android Tag</h2>
+            <h2 className="text-4xl sm:text-5xl font-bold text-blue-900">{activeProduct?.name || 'Android Tag'}</h2>
             <div className="space-y-8 max-w-2xl">
               <div className="h-px w-24 bg-gradient-to-r from-blue-600 via-blue-400 to-transparent" />
               <div className="relative pl-6">
@@ -93,10 +96,7 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
               
               <div className="flex items-center flex-wrap gap-4">
                 <span className="text-3xl font-bold text-blue-900">
-                  {(() => {
-                    const price = colorPrices?.[selectedColor.name] ?? startingPrice;
-                    return price != null ? `PKR ${Number(price).toLocaleString()}` : 'PKR —';
-                  })()}
+                  {activeProduct?.fromPrice != null ? `PKR ${Number(activeProduct.fromPrice).toLocaleString()}` : 'PKR —'}
                 </span>
                 <span className="text-sm text-blue-800">
                   {(() => {
@@ -105,20 +105,12 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
                     return avail > 0 ? `${avail} available` : 'Out of stock';
                   })()}
                 </span>
-                {(() => {
-                  const avail = colorAvailability?.[selectedColor.name];
-                  const disabled = typeof avail === 'number' && avail <= 0;
-                  return (
-                    <button
-                      onClick={handleAdd}
-                      disabled={disabled}
-                      aria-disabled={disabled}
-                      className={`font-medium px-8 py-3 rounded-lg transition-all text-white ${disabled ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}
-                    >
-                      Add to Cart
-                    </button>
-                  );
-                })()}
+                <Link
+                  href={activeProduct ? `/lp/${activeProduct.slug}` : '/products'}
+                  className="font-medium px-8 py-3 rounded-lg transition-all text-white bg-blue-600 hover:bg-blue-700"
+                >
+                  View product
+                </Link>
               </div>
             </div>
           </div>
@@ -139,11 +131,39 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
             </div>
 
             <div className="relative w-full max-w-4xl mx-auto px-4 py-8">
+              <div className="absolute inset-y-1/2 -left-1 translate-y-[-50%] hidden sm:flex">
+                {hasProducts && products.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveIndex((idx) => (idx - 1 + products.length) % products.length)}
+                    className="w-9 h-9 rounded-full bg-white/80 shadow flex items-center justify-center hover:bg-white text-blue-700"
+                    aria-label="Previous product"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12.5 4L7.5 10L12.5 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              <div className="absolute inset-y-1/2 -right-1 translate-y-[-50%] hidden sm:flex">
+                {hasProducts && products.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveIndex((idx) => (idx + 1) % products.length)}
+                    className="w-9 h-9 rounded-full bg-white/80 shadow flex items-center justify-center hover:bg-white text-blue-700"
+                    aria-label="Next product"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M7.5 4L12.5 10L7.5 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                )}
+              </div>
               <div className="relative w-full max-w-2xl mx-auto bg-blend-screen">
                 <div className="absolute inset-0 bg-gradient-to-t from-blue-600/10 to-transparent" />
                 <Image
-                  src="/images/2c6e7458128b076e82bd99f52ab130c8.avif"
-                  alt="Android Tag Product"
+                  src={(activeProduct?.image as string) || '/images/2c6e7458128b076e82bd99f52ab130c8.avif'}
+                  alt={activeProduct?.name || 'Android Tag Product'}
                   width={800}
                   height={600}
                   className="w-full h-auto select-none mix-blend-multiply brightness-110"
@@ -354,7 +374,7 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform" />
                     ) : (
-                      <div className="text-blue-300">No image</div>
+                      <div className="text-blue-300 text-sm">Image coming soon</div>
                     )}
                   </div>
                   <div className="p-4 space-y-1">
