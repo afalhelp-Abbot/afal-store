@@ -1,4 +1,4 @@
-csimport { requireAdmin } from '@/lib/auth';
+import { requireAdmin } from '@/lib/auth';
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
 import Link from 'next/link';
 
