@@ -1,0 +1,292 @@
+Yes—making the main changes in Supabase (DB layer) is the better option here, especially as you add more products.
+
+Why DB‑level (Supabase) changes are better
+Single source of truth
+place_order already creates orders and lines for all products.
+If we add shipping_amount + inventory reservation there, every product and LP automatically behaves correctly.
+Atomic & safe
+Reservation and order insert can be in one transaction.
+No risk of: order created but inventory not reserved (or vice versa).
+Less duplicated logic
+You don’t have to remember to adjust inventory/total in multiple TS files if you add new flows (mobile app, admin phone orders, etc.).
+Scaling to more products
+As long as all LPs call /api/orders/create → place_order, you never need product‑specific order code.
+We will still need small Next.js changes (to show shipping in admin), but the real business logic should live in Supabase.
+
+If you’re okay with that, next I can:
+
+Write the exact SQL you should run in Supabase:
+ALTER TABLE orders ADD COLUMN shipping_amount numeric(12,2) DEFAULT 0 NOT NULL;
+Updated place_order function signature and body (with p_shipping_amount and inventory reservation).
+Then adjust the TypeScript:
+/api/orders/create to pass p_shipping_amount.
+admin/orders/page.tsx
+ (and optionally [id]/page.tsx) to display subtotal + shipping.
+Confirm you want to proceed this way, and I’ll start by drafting the SQL for you.
+
+Feedback submitted
+
+
+ok lets do it
+
+Great. We’ll do this in two parts:
+
+Supabase (DB) changes – source of truth
+Small Next.js changes – to display the correct totals
+1. Supabase: schema + place_order changes
+1.1 Add shipping_amount to orders
+In Supabase SQL editor, run:
+
+sql
+ALTER TABLE public.orders
+ADD COLUMN IF NOT EXISTS shipping_amount numeric(12,2) NOT NULL DEFAULT 0;
+This will backfill existing rows with 0.
+
+1.2 Update place_order function
+You already have a place_order(p_customer jsonb, p_items jsonb, p_utm jsonb) function.
+
+We want:
+
+New argument: p_shipping_amount numeric
+Insert that into orders.shipping_amount
+Reserve inventory for each item.
+In the SQL editor, open the current definition of place_order, copy it, and then modify along these lines (I’ll show the important parts, you’ll merge into your current body):
+
+sql
+CREATE OR REPLACE FUNCTION public.place_order(
+  p_customer jsonb,
+  p_items    jsonb,
+  p_utm      jsonb DEFAULT '{}'::jsonb,
+  p_shipping_amount numeric DEFAULT 0
+)
+RETURNS uuid
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  v_order_id uuid;
+  v_item jsonb;
+  v_variant_id uuid;
+  v_qty int;
+  v_price numeric;
+BEGIN
+  -- 1) Create order header (now with shipping_amount)
+  INSERT INTO public.orders (
+    status,
+    customer_name,
+    email,
+    phone,
+    address,
+    city,
+    province_code,
+    utm_source,
+    utm_medium,
+    utm_campaign,
+    shipping_amount
+  )
+  VALUES (
+    'pending',
+    p_customer->>'name',
+    NULLIF(p_customer->>'email', ''),
+    p_customer->>'phone',
+    p_customer->>'address',
+    p_customer->>'city',
+    NULLIF(p_customer->>'province_code', ''),
+    p_utm->>'source',
+    p_utm->>'medium',
+    p_utm->>'campaign',
+    COALESCE(p_shipping_amount, 0)
+  )
+  RETURNING id INTO v_order_id;
+
+  -- 2) Insert order_lines and lock prices from variants
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
+  LOOP
+    v_variant_id := (v_item->>'variant_id')::uuid;
+    v_qty        := COALESCE((v_item->>'qty')::int, 0);
+
+    IF v_qty <= 0 OR v_variant_id IS NULL THEN
+      CONTINUE;
+    END IF;
+
+    SELECT price
+    INTO v_price
+    FROM variants
+    WHERE id = v_variant_id
+      AND active = true;
+
+    IF v_price IS NULL THEN
+      RAISE EXCEPTION 'Variant % not found or inactive', v_variant_id;
+    END IF;
+
+    INSERT INTO order_lines (order_id, variant_id, qty, unit_price, line_total)
+    VALUES (v_order_id, v_variant_id, v_qty, v_price, v_price * v_qty);
+  END LOOP;
+
+  -- 3) Reserve inventory: increment reserved for each variant
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
+  LOOP
+    v_variant_id := (v_item->>'variant_id')::uuid;
+    v_qty        := COALESCE((v_item->>'qty')::int, 0);
+    IF v_qty <= 0 OR v_variant_id IS NULL THEN
+      CONTINUE;
+    END IF;
+
+    INSERT INTO inventory (variant_id, stock_on_hand, reserved, updated_at)
+    VALUES (v_variant_id, 0, v_qty, now())
+    ON CONFLICT (variant_id)
+    DO UPDATE
+      SET reserved  = inventory.reserved + EXCLUDED.reserved,
+          updated_at = now();
+  END LOOP;
+
+  RETURN v_order_id;
+END;
+$$;
+Important:
+Keep any extra logic you currently have in place_order (UTM handling, logging, etc.). The key additions are:
+
+New parameter p_shipping_amount.
+shipping_amount column in the INSERT INTO orders.
+The inventory INSERT ... ON CONFLICT ... block.
+2. Next.js changes
+Once you’ve updated Supabase, we adjust the app code.
+
+2.1 Pass p_shipping_amount when calling place_order
+In src/app/api/orders/create/route.ts, change the RPC call:
+
+ts
+const body = await req.json();
+const items = (body?.items ?? []) as Array<{ variant_id: string; qty: number }>;
+const customer = body?.customer || {};
+const shippingAmount = Number(body?.shipping?.amount || 0);
+
+const { data, error } = await supabase.rpc('place_order', {
+  p_customer: customer,
+  p_items: items,
+  p_utm: body?.utm ?? {},
+  p_shipping_amount: shippingAmount,
+});
+Everything else in that file can stay as is.
+
+2.2 Include shipping in admin order totals
+In 
+src/app/admin/orders/page.tsx
+:
+
+Extend the select in 
+fetchOrders
+:
+ts
+.select('id, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount')
+When computing totals:
+ts
+return (data ?? []).map((o) => ({
+  ...o,
+  total: (totals[String(o.id)] ?? 0) + Number((o as any).shipping_amount || 0),
+}));
+Now the Orders list will show 3,990 + 150 = 4,140.
+
+2.3 (Optional but recommended) Show shipping in order detail
+In src/app/admin/orders/[id]/page.tsx:
+
+Fetch shipping_amount along with the order row.
+When rendering the totals section, show:
+Items subtotal (sum of line totals)
+Shipping: shipping_amount
+Total: subtotal + shipping_amount
+What to do now
+Run the ALTER TABLE in Supabase.
+Replace place_order with the new definition (merging with your existing body).
+Then tell me, and I can help you apply the TypeScript edits directly in your repo (or you can do them manually following the snippets above).
+Once it’s deployed, we’ll:
+
+Place another test order,
+Confirm:
+Admin orders list shows 4,140 PKR,
+inventory.reserved increments for that variant, and
+Status changes still adjust inventory correctly.
+Feedback submitted
+
+
+i ran sql now you do code changes
+
+You’ve run the SQL, perfect. Next I’ll update the Next.js code so:
+
+/api/orders/create sends p_shipping_amount into place_order.
+The admin Orders page includes shipping_amount when calculating totals.
+I’ll modify those files directly now.
+
+1
+Debug why shipping amount is not included in admin order totals in Afal Store
+
+2
+Implement correct inventory reservation and release behaviour when orders move between Pending, Shipped, and Cancelled
+
+route.ts
++2
+page.tsx
++5
+-2
+I’ve made the initial code changes.
+
+What I changed
+Checkout API → pass shipping into place_order
+File: 
+src/app/api/orders/create/route.ts
+
+Before:
+ts
+const { data, error } = await supabase.rpc('place_order', {
+  p_customer: customer,
+  p_items: items,
+  p_utm: body?.utm ?? {},
+});
+Now:
+ts
+const shippingAmount = Number((body?.shipping?.amount as any) || 0);
+const { data, error } = await supabase.rpc('place_order', {
+  p_customer: customer,
+  p_items: items,
+  p_utm: body?.utm ?? {},
+  p_shipping_amount: shippingAmount,
+});
+So the function you updated in Supabase now receives p_shipping_amount.
+
+Admin Orders list → include shipping in totals
+File: 
+src/app/admin/orders/page.tsx
+
+Query now selects shipping_amount:
+ts
+.from('orders')
+.select('id, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount')
+Totals now add shipping:
+ts
+return (data ?? []).map((o) => ({
+  ...o,
+  total: (totals[String(o.id)] ?? 0) + Number((o as any).shipping_amount || 0),
+}));
+So the list should show 3,990 + 150 = 4,140 PKR for your test order once everything is in sync.
+
+Next steps for you to test
+Deploy / restart your app if needed (or just let Vercel rebuild from Git once you push).
+Place a new test order from the LP:
+Confirm checkout still shows correct totals.
+In Admin → Orders:
+Confirm the new order’s Total column is 3,990 + 150 = 4,140.
+In Admin → Inventory:
+Check that the reserved value for that variant increased by 1 (assuming your new place_order function includes the inventory reservation block we discussed).
+If after your test:
+
+Total still shows 3,990, that means the place_order function is not yet storing shipping_amount and we’ll adjust the SQL.
+Reserved doesn’t change, same thing: we’ll revisit the inventory part of place_order.
+Tell me the result of a fresh test order (what you see in Orders list + inventory) and we’ll either move on to the next issue or refine the SQL.
+
+Feedback submitted
+
+
+ok great now make a .md file name doing.md and save all what are doing so when we come next time you just read it and start from there 
+
+You want a persistent log of what we’re doing so next time we can quickly continue. I’ll create a doing.md file in this project and write a concise summary of the changes and decisions we made today. Next sessions we’ll just open that file and resume from there.
+
+Unknown: HTTP status 413 Request Entity Too Large
