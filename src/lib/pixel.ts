@@ -9,19 +9,15 @@ declare global {
 }
 
 export function ensurePixel(pixelId?: string | null) {
-  console.log('[ensurePixel] called', { pixelId });
   if (!pixelId) {
-    console.log('[ensurePixel] early exit: no pixelId');
     return false;
   }
   if (typeof window === 'undefined' || typeof document === 'undefined') {
-    console.log('[ensurePixel] early exit: window or document undefined');
     return false;
   }
   const w = window as any;
   // Load script if fbq not present
   if (!w.fbq) {
-    console.log('[ensurePixel] fbq not present, bootstrapping stub + loading script');
     // Safe stub based on Meta's recommended pattern, but without mutating
     // function properties that can be read-only in some environments.
     const queue: any[] = [];
@@ -40,12 +36,9 @@ export function ensurePixel(pixelId?: string | null) {
     else document.head.appendChild(s);
   }
   try {
-    console.log('[ensurePixel] calling fbq("init")', { pixelId: String(pixelId) });
     w.fbq('init', String(pixelId));
-    console.log('[ensurePixel] fbq init success');
     return true;
-  } catch (e) {
-    console.log('[ensurePixel] fbq init error', e);
+  } catch {
     return false;
   }
 }
