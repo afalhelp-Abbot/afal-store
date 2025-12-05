@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { track } from "@/lib/pixel";
 
 export type SocialLinksProps = {
   fbPageUrl?: string | null;
@@ -13,6 +14,8 @@ export type SocialLinksProps = {
   whatsappEnabled?: boolean | null;
   contactEmailEnabled?: boolean | null;
   contactPhoneEnabled?: boolean | null;
+  productId?: string;
+  productName?: string;
 };
 
 function Icon({ kind }: { kind: string }) {
@@ -87,6 +90,8 @@ export default function SocialLinks({
   whatsappEnabled,
   contactEmailEnabled,
   contactPhoneEnabled,
+  productId,
+  productName,
 }: SocialLinksProps) {
   const items: Array<{ key: string; label: string; href?: string }> = [];
 
@@ -108,6 +113,23 @@ export default function SocialLinks({
 
   if (items.length === 0) return null;
 
+  const handleClick = (key: string) => {
+    if (!productId) return;
+    const platformMap: Record<string, string> = {
+      fb: "facebook",
+      ig: "instagram",
+      wa: "whatsapp",
+      mail: "email",
+      phone: "phone",
+    };
+    const platform = platformMap[key] ?? key;
+    track("Contact", {
+      platform,
+      product_id: productId,
+      content_name: productName || undefined,
+    });
+  };
+
   return (
     <section className="mt-4 space-y-2">
       <h2 className="text-sm font-medium text-gray-800">Stay connected</h2>
@@ -119,6 +141,7 @@ export default function SocialLinks({
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center rounded-full w-16 h-16 border border-transparent bg-white shadow-sm hover:shadow text-gray-900 hover:ring-2 hover:ring-black/10"
+            onClick={() => handleClick(it.key)}
           >
             <Icon kind={it.key} />
             <span className="sr-only">{it.label}</span>

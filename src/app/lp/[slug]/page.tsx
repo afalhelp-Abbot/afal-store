@@ -8,6 +8,7 @@ import ImageGallery, { type MediaItem } from '@/components/web/product/ImageGall
 import UTMCapture from '@/components/web/landing/UTMCapture';
 import LPViewPixel from '@/components/web/pixel/LPViewPixel';
 import SocialLinks from '@/components/web/landing/SocialLinks';
+import TrackedVideo from '@/components/web/landing/TrackedVideo';
 
 // Render helper: if the string looks like HTML, inject as HTML. Otherwise, render paragraphs
 // and preserve single line breaks. Urdu is rendered RTL with the Urdu font class.
@@ -259,7 +260,7 @@ async function fetchLpData(slug: string) {
 }
 
 // Lightweight renderer for long-form sections (text/video/image)
-function Section({ item }: { item: { type?: string; title?: string | null; body?: string | null; media_refs?: string[] | null } }) {
+function Section({ item, productId, productName }: { item: { type?: string; title?: string | null; body?: string | null; media_refs?: string[] | null }; productId?: string; productName?: string }) {
   const t = (item?.type || '').toLowerCase();
   const title = item?.title || '';
   const body = item?.body || '';
@@ -273,9 +274,13 @@ function Section({ item }: { item: { type?: string; title?: string | null; body?
         <img src={media[0] as string} alt={title || 'section image'} className="w-full h-auto rounded border" />
       )}
       {t === 'video' && media.length > 0 && (
-        <video controls className="w-full h-auto rounded border">
-          <source src={media[0] as string} />
-        </video>
+        <TrackedVideo
+          src={media[0] as string}
+          className="w-full h-auto rounded border"
+          productId={productId}
+          productName={productName}
+          location="section"
+        />
       )}
     </section>
   );
@@ -356,7 +361,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
         {/* Media Gallery */}
         <section>
           {mediaItems.length > 0 ? (
-            <ImageGallery items={mediaItems} />
+            <ImageGallery items={mediaItems} productId={product.id} productName={product.name} />
           ) : (
             <div className="aspect-[1/1] w-full grid place-items-center border rounded text-sm text-gray-500">No media yet</div>
           )}
@@ -440,6 +445,8 @@ export default async function LandingPage({ params }: { params: { slug: string }
             whatsappEnabled={Boolean((product as any).whatsapp_enabled)}
             contactEmailEnabled={Boolean((product as any).contact_email_enabled)}
             contactPhoneEnabled={Boolean((product as any).contact_phone_enabled)}
+            productId={product.id}
+            productName={product.name}
           />
         </div>
 
@@ -483,7 +490,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
         {sections && sections.length > 0 && (
           <section className="space-y-8 lg:space-y-10">
             {(sections || []).map((s: any, idx: number) => (
-              <Section key={idx} item={s} />
+              <Section key={idx} item={s} productId={product.id} productName={product.name} />
             ))}
           </section>
         )}

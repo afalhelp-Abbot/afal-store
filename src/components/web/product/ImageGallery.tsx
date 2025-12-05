@@ -2,6 +2,7 @@
 
 import Image, { StaticImageData } from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import TrackedVideo from "@/components/web/landing/TrackedVideo";
 
 export type MediaItem =
   | { type: "image"; src: StaticImageData | string; alt?: string; thumb?: StaticImageData | string }
@@ -10,9 +11,11 @@ export type MediaItem =
 type Props = {
   items: MediaItem[];
   className?: string;
+  productId?: string;
+  productName?: string;
 };
 
-export default function ImageGallery({ items, className }: Props) {
+export default function ImageGallery({ items, className, productId, productName }: Props) {
   const [index, setIndex] = useState(0);
   const [isZoom, setIsZoom] = useState(false);
   const [origin, setOrigin] = useState<{ x: number; y: number }>({ x: 50, y: 50 });
@@ -203,13 +206,14 @@ export default function ImageGallery({ items, className }: Props) {
             </>
           ) : (
             <>
-              <video
-                controls
+              <TrackedVideo
                 className="absolute inset-0 w-full h-full object-contain bg-black"
+                src={(items[safeIndex] as any).src}
                 poster={((items[safeIndex] as any).poster as any) || autoPosters[safeIndex]}
-              >
-                <source src={(items[safeIndex] as any).src} />
-              </video>
+                productId={productId}
+                productName={productName}
+                location="gallery"
+              />
               {/* Center play badge over poster */}
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="bg-black/45 rounded-full p-3 md:p-4">

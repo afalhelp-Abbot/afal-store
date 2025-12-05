@@ -92,7 +92,7 @@ export default async function AirTagPage() {
       </header>
 
       <section className="grid md:grid-cols-[680px_1fr] gap-10 items-start">
-        <ImageGallery items={media} />
+        <ImageGallery items={media} productId={product.id} productName={product.name} />
         <div className="space-y-4">
           <p className="text-sm text-gray-700">Choose Color</p>
           <div className="grid grid-cols-2 gap-3">

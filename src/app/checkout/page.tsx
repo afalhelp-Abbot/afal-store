@@ -301,6 +301,12 @@ function CheckoutInner() {
     if (pixelCfg.events && pixelCfg.events.initiate_checkout === false) return;
     if (firedInitRef.current) return;
     if (!lines.length) return;
+    // Wait until we have variant pricing for all lines; avoid firing with 0 value
+    const allPriced = lines.every((ln) => {
+      const v = variants[ln.variant_id];
+      return v && Number(v.price || 0) > 0;
+    });
+    if (!allPriced) return;
     const ok = ensurePixel(pixelCfg.pixel_id);
     if (!ok) return;
     const build = () => {
