@@ -18,19 +18,40 @@ type Props = {
 
 export default function LPViewPixel({ productId, productName, variants, config }: Props) {
   useEffect(() => {
-    if (!config || !config.enabled || !config.pixel_id) return;
-    if (config.events && config.events.view_content === false) return;
+    console.log('[LPViewPixel] effect start', {
+      productId,
+      productName,
+      variantsLength: variants?.length ?? 0,
+      hasConfig: !!config,
+      configEnabled: config?.enabled,
+      pixelIdPresent: !!config?.pixel_id,
+      events: config?.events,
+    });
+    if (!config || !config.enabled || !config.pixel_id) {
+      console.log('[LPViewPixel] early exit: missing or disabled config');
+      return;
+    }
+    if (config.events && config.events.view_content === false) {
+      console.log('[LPViewPixel] early exit: view_content disabled in events');
+      return;
+    }
     const ok = ensurePixel(config.pixel_id);
+    console.log('[LPViewPixel] ensurePixel result', ok);
     if (!ok) return;
     const ids = variants.map((v) => (config.content_id_source === "variant_id" ? v.id : v.sku)).filter(Boolean);
     const minPrice = variants.reduce((m, v) => Math.min(m, Number(v.price) || Infinity), Infinity);
     const value = Number.isFinite(minPrice) ? minPrice : undefined;
+    track("PageView");
     track("ViewContent", {
       content_ids: ids.slice(0, 20),
       content_type: "product",
       content_name: productName,
       value,
       currency: "PKR",
+    });
+    console.log('[LPViewPixel] fired PageView + ViewContent', {
+      contentIdsCount: ids.length,
+      value,
     });
   }, [productId, productName, config, variants]);
   return null;

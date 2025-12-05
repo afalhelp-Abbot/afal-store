@@ -9,15 +9,28 @@ declare global {
 }
 
 export function ensurePixel(pixelId?: string | null) {
-  if (!pixelId) return false;
-  if (typeof window === 'undefined' || typeof document === 'undefined') return false;
+  console.log('[ensurePixel] called', { pixelId });
+  if (!pixelId) {
+    console.log('[ensurePixel] early exit: no pixelId');
+    return false;
+  }
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    console.log('[ensurePixel] early exit: window or document undefined');
+    return false;
+  }
   const w = window as any;
   // Load script if fbq not present
   if (!w.fbq) {
+    console.log('[ensurePixel] fbq not present, bootstrapping stub + loading script');
+    // Safe stub based on Meta's recommended pattern, but without mutating
+    // function properties that can be read-only in some environments.
+    const queue: any[] = [];
     const fbq: any = function(this: any) {
-      (fbq.callMethod ? fbq.callMethod : fbq.queue.push).apply(fbq, arguments as any);
+      queue.push(arguments as any);
     };
-    fbq.push = fbq; fbq.loaded = true; fbq.version = '2.0'; fbq.queue = [];
+    fbq.queue = queue;
+    fbq.loaded = true;
+    fbq.version = '2.0';
     w.fbq = fbq;
     if (!w._fbq) w._fbq = fbq;
     const s = document.createElement('script');
@@ -27,9 +40,12 @@ export function ensurePixel(pixelId?: string | null) {
     else document.head.appendChild(s);
   }
   try {
+    console.log('[ensurePixel] calling fbq("init")', { pixelId: String(pixelId) });
     w.fbq('init', String(pixelId));
+    console.log('[ensurePixel] fbq init success');
     return true;
-  } catch {
+  } catch (e) {
+    console.log('[ensurePixel] fbq init error', e);
     return false;
   }
 }
