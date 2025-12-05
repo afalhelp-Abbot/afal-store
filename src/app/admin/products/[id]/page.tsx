@@ -70,6 +70,19 @@ type SectionRow = {
   sort: number;
 };
 
+type PromotionRow = {
+  id: string;
+  product_id: string;
+  name: string;
+  active: boolean;
+  type: 'percent' | 'bxgy';
+  min_qty: number;
+  discount_pct: number | null;
+  free_qty: number | null;
+  start_at: string | null; // ISO string
+  end_at: string | null;   // ISO string
+};
+
 export default function EditProductPage() {
   const params = useParams() as { id: string };
   const router = useRouter();
@@ -84,11 +97,11 @@ export default function EditProductPage() {
     targetBitrateKbps: number | null;
   } | null>(null);
 
-  // Analyze selected video to provide advice and early validation
+  // Analyze selected video with simple size validation (duration-based advice omitted for now)
   const analyzeVideo = async (file: File) => {
     try {
       const sizeMB = Number((file.size / (1024 * 1024)).toFixed(1));
-      // Prepopulate advice with basic info
+      // Basic advice: just show file size
       setVideoAdvice({ name: file.name, sizeMB, durationSec: null, targetBitrateKbps: null });
 
       // Immediate size guard
@@ -98,35 +111,100 @@ export default function EditProductPage() {
         return;
       }
 
-      // Load metadata to estimate target bitrate that would fit under the cap
-      const objectUrl = URL.createObjectURL(file);
-      const durationSec: number = await new Promise((resolve, reject) => {
-        const v = document.createElement('video');
-        v.preload = 'metadata';
-        v.onloadedmetadata = () => {
-          const d = v.duration;
-          URL.revokeObjectURL(objectUrl);
-          resolve(Number.isFinite(d) ? d : 0);
-        };
-        v.onerror = () => {
-          URL.revokeObjectURL(objectUrl);
-          reject(new Error('Could not read video metadata'));
-        };
-        v.src = objectUrl;
-      });
-
-      if (durationSec && durationSec > 0) {
-        // Reserve ~2 MB for audio/containers, compute kbps to fit under limit
-        const availableMbForVideo = Math.max(1, MAX_VIDEO_MB - 2);
-        const kbps = Math.floor((availableMbForVideo * 8192) / durationSec);
-        // Clamp to a reasonable range for 720p
-        const targetBitrateKbps = Math.max(1200, Math.min(5000, kbps));
-        setVideoAdvice({ name: file.name, sizeMB, durationSec, targetBitrateKbps });
-      } else {
-        setVideoAdvice({ name: file.name, sizeMB, durationSec: null, targetBitrateKbps: null });
-      }
+      // If under limit, mark as ready; skip metadata-based bitrate calculation for now
+      setVideoReady(true);
     } catch (err: any) {
       setError(err?.message || 'Failed to analyze video');
+    }
+  };
+
+  const addEmptyPromotion = () => {
+    if (!product) return;
+    setPromotions((prev) => [
+      ...prev,
+      {
+        id: `local-${Date.now()}`,
+        product_id: product.id,
+        name: '',
+        active: true,
+        type: 'percent',
+        min_qty: 1,
+        discount_pct: 5,
+        free_qty: null,
+        start_at: null,
+        end_at: null,
+      },
+    ]);
+  };
+
+  const updatePromotionField = (id: string, patch: Partial<PromotionRow>) => {
+    setPromotions((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  };
+
+  const removePromotionLocal = (id: string) => {
+    setPromotions((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const savePromotions = async () => {
+    if (!product) return;
+    setSavingPromos(true);
+    setError(null);
+    try {
+      const rows = promotions;
+      // Basic validation: ensure each row has required fields depending on type
+      for (const r of rows) {
+        if (!r.name.trim()) throw new Error('Each promotion must have a name.');
+        if (!r.min_qty || r.min_qty <= 0) throw new Error('Promotion min quantity must be greater than 0.');
+        if (r.type === 'percent') {
+          if (!r.discount_pct || r.discount_pct <= 0) throw new Error('Percent promotions require a positive discount %.');
+        } else {
+          if (!r.free_qty || r.free_qty <= 0) throw new Error('Buy X Get Y promotions require Y (free units) > 0.');
+        }
+      }
+
+      // Upsert all rows (server will assign ids for new ones). For new/local rows
+      // we must NOT send an id field at all, otherwise Postgres will treat it as
+      // explicit null and violate the NOT NULL constraint.
+      const payload = rows.map((r) => {
+        const base: any = {
+          product_id: product.id,
+          name: r.name.trim(),
+          active: r.active,
+          type: r.type,
+          min_qty: r.min_qty,
+          discount_pct: r.type === 'percent' ? (r.discount_pct ?? null) : null,
+          free_qty: r.type === 'bxgy' ? (r.free_qty ?? null) : null,
+          start_at: r.start_at ? new Date(r.start_at) : null,
+          end_at: r.end_at ? new Date(r.end_at) : null,
+        };
+        if (!r.id.startsWith('local-')) {
+          base.id = r.id;
+        }
+        return base;
+      });
+
+      const { data, error } = await supabaseBrowser
+        .from('product_promotions')
+        .upsert(payload, { onConflict: 'id' })
+        .select('id, product_id, name, active, type, min_qty, discount_pct, free_qty, start_at, end_at');
+      if (error) throw error;
+
+      setPromotions(((data || []) as any[]).map((p) => ({
+        id: String(p.id),
+        product_id: String(p.product_id),
+        name: p.name || '',
+        active: !!p.active,
+        type: (p.type === 'bxgy' ? 'bxgy' : 'percent') as 'percent' | 'bxgy',
+        min_qty: Number(p.min_qty || 1),
+        discount_pct: p.discount_pct !== null && p.discount_pct !== undefined ? Number(p.discount_pct) : null,
+        free_qty: p.free_qty !== null && p.free_qty !== undefined ? Number(p.free_qty) : null,
+        start_at: p.start_at ? new Date(p.start_at as string).toISOString().slice(0, 16) : null,
+        end_at: p.end_at ? new Date(p.end_at as string).toISOString().slice(0, 16) : null,
+      })));
+    } catch (e: any) {
+      setError(e?.message || 'Failed to save promotions');
+    } finally {
+      setSavingPromos(false);
     }
   };
 
@@ -146,6 +224,8 @@ export default function EditProductPage() {
   const [enableSize, setEnableSize] = useState<boolean>(false);
   const [enableModel, setEnableModel] = useState<boolean>(false);
   const [enablePackage, setEnablePackage] = useState<boolean>(false);
+  const [promotions, setPromotions] = useState<PromotionRow[]>([]);
+  const [savingPromos, setSavingPromos] = useState(false);
 
   // Local form state
   const [name, setName] = useState('');
@@ -272,6 +352,25 @@ export default function EditProductPage() {
           .order('sort', { ascending: true });
         if (secErr) throw secErr;
         setSections((sec || []) as any);
+
+        // Load product promotions
+        const { data: promos } = await supabaseBrowser
+          .from('product_promotions')
+          .select('id, product_id, name, active, type, min_qty, discount_pct, free_qty, start_at, end_at')
+          .eq('product_id', params.id)
+          .order('created_at', { ascending: true });
+        setPromotions(((promos || []) as any[]).map((p) => ({
+          id: String(p.id),
+          product_id: String(p.product_id),
+          name: p.name || '',
+          active: !!p.active,
+          type: (p.type === 'bxgy' ? 'bxgy' : 'percent') as 'percent' | 'bxgy',
+          min_qty: Number(p.min_qty || 1),
+          discount_pct: p.discount_pct !== null && p.discount_pct !== undefined ? Number(p.discount_pct) : null,
+          free_qty: p.free_qty !== null && p.free_qty !== undefined ? Number(p.free_qty) : null,
+          start_at: p.start_at ? new Date(p.start_at as string).toISOString().slice(0, 16) : null,
+          end_at: p.end_at ? new Date(p.end_at as string).toISOString().slice(0, 16) : null,
+        })));
 
         // Load Color option type id and existing color values for this product
         const { data: ot } = await supabaseBrowser
@@ -1377,6 +1476,141 @@ export default function EditProductPage() {
         </div>
         <div>
           <button onClick={saveBasics} disabled={saving} className={`px-4 py-2 rounded text-white ${saving ? 'bg-gray-400' : 'bg-black hover:bg-gray-800'}`}>{saving ? 'Saving…' : 'Save'}</button>
+        </div>
+      </section>
+
+      {/* Promotions */}
+      <section className="space-y-4 border rounded p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-medium">Promotions</h2>
+          <button type="button" onClick={addEmptyPromotion} className="px-3 py-1.5 rounded border text-sm">Add promotion</button>
+        </div>
+        <p className="text-xs text-gray-600">Configure quantity-based discounts and Buy X Get Y offers for this product. Only the single best matching promotion is applied at checkout.</p>
+        <div className="space-y-3 text-xs md:text-sm overflow-x-auto">
+          {promotions.length === 0 && (
+            <div className="text-gray-500 text-sm">No promotions yet. Click "Add promotion" to create one.</div>
+          )}
+          {promotions.length > 0 && (
+            <table className="w-full min-w-[720px] border text-xs md:text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="p-2 text-left">Active</th>
+                  <th className="p-2 text-left">Name</th>
+                  <th className="p-2 text-left">Type</th>
+                  <th className="p-2 text-left">Min qty</th>
+                  <th className="p-2 text-left">% off / Free qty</th>
+                  <th className="p-2 text-left">Start (PK time)</th>
+                  <th className="p-2 text-left">End (PK time)</th>
+                  <th className="p-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {promotions.map((p) => (
+                  <tr key={p.id} className="border-t">
+                    <td className="p-2 align-top">
+                      <input
+                        type="checkbox"
+                        checked={p.active}
+                        onChange={(e)=>updatePromotionField(p.id,{ active: e.target.checked })}
+                      />
+                    </td>
+                    <td className="p-2 align-top">
+                      <input
+                        value={p.name}
+                        onChange={(e)=>updatePromotionField(p.id,{ name: e.target.value })}
+                        className="w-full border rounded px-2 py-1"
+                        placeholder="e.g. Buy 3 get 15% off"
+                      />
+                    </td>
+                    <td className="p-2 align-top">
+                      <select
+                        value={p.type}
+                        onChange={(e)=>updatePromotionField(p.id,{ type: (e.target.value as 'percent' | 'bxgy') })}
+                        className="border rounded px-2 py-1 w-full"
+                      >
+                        <option value="percent">% discount</option>
+                        <option value="bxgy">Buy X Get Y free</option>
+                      </select>
+                    </td>
+                    <td className="p-2 align-top">
+                      <input
+                        type="number"
+                        min={1}
+                        value={p.min_qty}
+                        onChange={(e)=>updatePromotionField(p.id,{ min_qty: Number(e.target.value || '0') })}
+                        className="w-20 border rounded px-2 py-1 text-right"
+                      />
+                    </td>
+                    <td className="p-2 align-top">
+                      {p.type === 'percent' ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min={0}
+                            max={90}
+                            step={0.1}
+                            value={p.discount_pct ?? ''}
+                            onChange={(e)=>updatePromotionField(p.id,{ discount_pct: e.target.value === '' ? null : Number(e.target.value) })}
+                            className="w-24 border rounded px-2 py-1 text-right"
+                            placeholder="10"
+                          />
+                          <span>%</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <span>Free</span>
+                          <input
+                            type="number"
+                            min={1}
+                            value={p.free_qty ?? ''}
+                            onChange={(e)=>updatePromotionField(p.id,{ free_qty: e.target.value === '' ? null : Number(e.target.value) })}
+                            className="w-24 border rounded px-2 py-1 text-right"
+                            placeholder="1"
+                          />
+                          <span>unit(s)</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="p-2 align-top">
+                      <input
+                        type="datetime-local"
+                        value={p.start_at || ''}
+                        onChange={(e)=>updatePromotionField(p.id,{ start_at: e.target.value || null })}
+                        className="border rounded px-2 py-1 w-full"
+                      />
+                    </td>
+                    <td className="p-2 align-top">
+                      <input
+                        type="datetime-local"
+                        value={p.end_at || ''}
+                        onChange={(e)=>updatePromotionField(p.id,{ end_at: e.target.value || null })}
+                        className="border rounded px-2 py-1 w-full"
+                      />
+                    </td>
+                    <td className="p-2 align-top text-right">
+                      <button
+                        type="button"
+                        onClick={()=>removePromotionLocal(p.id)}
+                        className="text-red-600 hover:underline"
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div className="pt-2">
+          <button
+            type="button"
+            onClick={savePromotions}
+            disabled={savingPromos}
+            className={`px-4 py-2 rounded text-white ${savingPromos ? 'bg-gray-400' : 'bg-black hover:bg-gray-800'}`}
+          >
+            {savingPromos ? 'Saving…' : 'Save promotions'}
+          </button>
         </div>
       </section>
 

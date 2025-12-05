@@ -23,6 +23,19 @@ type VariantRow = {
   weight_kg?: number | null;
 };
 
+type PromotionRow = {
+  id: string;
+  product_id?: string;
+  name: string;
+  active: boolean;
+  type: 'percent' | 'bxgy';
+  min_qty: number;
+  discount_pct: number | null;
+  free_qty: number | null;
+  start_at?: string | null;
+  end_at?: string | null;
+};
+
 const PK_PROVINCES = [
   { code: "SD", name: "Sindh" },
   { code: "PB", name: "Punjab" },
@@ -57,6 +70,7 @@ function CheckoutInner() {
   const [productSlug, setProductSlug] = useState<string | null>(null);
   const [shippingAmount, setShippingAmount] = useState<number | null>(null);
   const [shippingLoading, setShippingLoading] = useState<boolean>(false);
+  const [promotions, setPromotions] = useState<PromotionRow[]>([]);
   // Meta Pixel config (per product)
   const [pixelCfg, setPixelCfg] = useState<null | { enabled: boolean; pixel_id: string | null; content_id_source: 'sku' | 'variant_id'; events: any }>(null);
   const firedInitRef = useRef(false);
@@ -68,7 +82,9 @@ function CheckoutInner() {
   // Helper: sync lines to URL
   const replaceUrlWithLines = (newLines: CartItem[]) => {
     const itemsParam = encodeURIComponent(JSON.stringify(newLines));
-    const qs = `?items=${itemsParam}`;
+    // Preserve original `from` param so empty-cart redirects can return to LP
+    const fromParam = search.get('from');
+    const qs = `?items=${itemsParam}` + (fromParam ? `&from=${fromParam}` : '');
     router.replace(`/checkout${qs}`);
   };
 
@@ -236,6 +252,13 @@ function CheckoutInner() {
           ]);
           setEnableCityRates(Boolean((settings as any)?.enable_city_rates));
           setHasCityRules(Boolean((anyCityRule || []).length));
+
+          // Load promotions for this product so checkout subtotal matches LP drawer
+          const { data: promoRows } = await supabaseBrowser
+            .from('product_promotions')
+            .select('id, product_id, name, active, type, min_qty, discount_pct, free_qty, start_at, end_at')
+            .eq('product_id', firstPid);
+          setPromotions((promoRows || []) as any);
         } else {
           setEnableCityRates(false);
           setHasCityRules(false);
@@ -284,10 +307,48 @@ function CheckoutInner() {
     })();
   }, [productId]);
 
-  // Subtotal of items
-  const subtotal = useMemo(() => {
+  // Raw subtotal of items (before promotions)
+  const rawSubtotal = useMemo(() => {
     return lines.reduce((acc, ln) => acc + (variants[ln.variant_id]?.price || 0) * ln.qty, 0);
   }, [lines, variants]);
+
+  // Total quantity across all lines
+  const totalQty = useMemo(() => {
+    return lines.reduce((acc, ln) => acc + (ln.qty || 0), 0);
+  }, [lines]);
+
+  // Apply best promotion (same logic as LP OrderDrawer).
+  const { subtotal, discount, promoLabel } = useMemo(() => {
+    if (!promotions || promotions.length === 0) return { subtotal: rawSubtotal, discount: 0, promoLabel: null as string | null };
+    if (!rawSubtotal || rawSubtotal <= 0 || totalQty <= 0) return { subtotal: rawSubtotal, discount: 0, promoLabel: null as string | null };
+    const now = new Date();
+    let best = { d: 0, label: null as string | null };
+    for (const p of promotions) {
+      if (!p || !p.active) continue;
+      if (p.min_qty && totalQty < p.min_qty) continue;
+      if (p.start_at) {
+        const s = new Date(p.start_at);
+        if (now < s) continue;
+      }
+      if (p.end_at) {
+        const e = new Date(p.end_at);
+        if (now > e) continue;
+      }
+      let d = 0;
+      if (p.type === 'percent' && p.discount_pct && p.discount_pct > 0) {
+        d = rawSubtotal * (p.discount_pct / 100);
+      } else if (p.type === 'bxgy' && p.free_qty && p.free_qty > 0 && p.min_qty > 0) {
+        const unitPrice = rawSubtotal / totalQty;
+        const freeUnits = Math.floor(totalQty / p.min_qty) * p.free_qty;
+        d = freeUnits * unitPrice;
+      }
+      if (d > best.d) {
+        best = { d, label: p.name || null };
+      }
+    }
+    const fs = Math.max(0, rawSubtotal - best.d);
+    return { subtotal: fs, discount: best.d, promoLabel: best.label };
+  }, [promotions, rawSubtotal, totalQty]);
 
   // Compute total weight kg
   const totalWeightKg = useMemo(() => {
@@ -819,6 +880,15 @@ function CheckoutInner() {
             })()}
             <h2 className="font-medium">Order Summary</h2>
           </div>
+          {discount > 0 && (
+            <div className="text-xs text-green-700 bg-green-50 border border-green-100 rounded px-2 py-1.5">
+              Congrats! You got
+              {" "}
+              <span className="font-semibold">{promoLabel || 'a promotion'}</span>
+              {" "}
+              discount (saving PKR {Number(discount).toLocaleString()}).
+            </div>
+          )}
           <div className="flex items-center justify-between text-sm">
             <span>Items subtotal</span>
             <span>

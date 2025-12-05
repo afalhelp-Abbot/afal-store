@@ -20,9 +20,10 @@ type OrderDrawerProps = {
   specialMessage?: string | null;
   contentIdSource?: 'sku' | 'variant_id';
   variantSkuMap?: Record<string, string>;
+  promotions?: Array<{ id: string; name: string; active: boolean; type: 'percent' | 'bxgy'; min_qty: number; discount_pct: number | null; free_qty: number | null; start_at?: string | null; end_at?: string | null }>;
 };
 
-export default function OrderDrawer({ open, onClose, colors, models, packages, sizes, matrix, initialColor, colorThumbs, logoUrl, specialMessage, contentIdSource, variantSkuMap }: OrderDrawerProps) {
+export default function OrderDrawer({ open, onClose, colors, models, packages, sizes, matrix, initialColor, colorThumbs, logoUrl, specialMessage, contentIdSource, variantSkuMap, promotions }: OrderDrawerProps) {
   const router = useRouter();
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -134,6 +135,50 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
     }
     return sum;
   }, [qtyMap, matrix]);
+
+  // Total quantity across all selected options
+  const totalQty: number = React.useMemo(() => {
+    let q = 0;
+    for (const v of Object.values(qtyMap)) {
+      q += Number(v || 0);
+    }
+    return q;
+  }, [qtyMap]);
+
+  // Determine best applicable promotion (if any). We do not change the item
+  // payload sent to checkout here; this only affects displayed subtotal and
+  // CTA text so the user sees their discount.
+  const { finalSubtotal, discount, promoLabel } = React.useMemo(() => {
+    if (!promotions || promotions.length === 0) return { finalSubtotal: subtotal, discount: 0, promoLabel: null as string | null };
+    if (!subtotal || subtotal <= 0 || totalQty <= 0) return { finalSubtotal: subtotal, discount: 0, promoLabel: null as string | null };
+    const now = new Date();
+    let best = { d: 0, label: null as string | null };
+    for (const p of promotions) {
+      if (!p || !p.active) continue;
+      if (p.min_qty && totalQty < p.min_qty) continue;
+      if (p.start_at) {
+        const s = new Date(p.start_at);
+        if (now < s) continue;
+      }
+      if (p.end_at) {
+        const e = new Date(p.end_at);
+        if (now > e) continue;
+      }
+      let d = 0;
+      if (p.type === 'percent' && p.discount_pct && p.discount_pct > 0) {
+        d = subtotal * (p.discount_pct / 100);
+      } else if (p.type === 'bxgy' && p.free_qty && p.free_qty > 0 && p.min_qty > 0) {
+        const unitPrice = subtotal / totalQty;
+        const freeUnits = Math.floor(totalQty / p.min_qty) * p.free_qty;
+        d = freeUnits * unitPrice;
+      }
+      if (d > best.d) {
+        best = { d, label: p.name || null };
+      }
+    }
+    const fs = Math.max(0, subtotal - best.d);
+    return { finalSubtotal: fs, discount: best.d, promoLabel: best.label };
+  }, [promotions, subtotal, totalQty]);
 
   // Build simple order summary lines from qtyMap
   const orderLines = React.useMemo(
@@ -420,21 +465,29 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
             {/* Subtotal */}
             <div className="flex items-center justify-between border-t pt-3">
               <div className="text-sm text-gray-600">Subtotal</div>
-              <div className="text-lg font-semibold">PKR {Number(subtotal || 0).toLocaleString()}</div>
+              <div className="text-right">
+                {discount > 0 && (
+                  <div className="text-xs text-green-700">Promo applied{promoLabel ? `: ${promoLabel}` : ''}</div>
+                )}
+                <div className="text-lg font-semibold">PKR {Number(finalSubtotal || 0).toLocaleString()}</div>
+                {discount > 0 && (
+                  <div className="text-xs text-gray-500 line-through">PKR {Number(subtotal || 0).toLocaleString()}</div>
+                )}
+              </div>
             </div>
 
             {/* No customer info here. Proceed to checkout to fill address & payment. */}
             <button
               type="submit"
-              disabled={loading || subtotal <= 0}
+              disabled={loading || finalSubtotal <= 0}
               className={`rounded px-4 py-2 text-white ${
-                loading || subtotal <= 0 ? 'bg-gray-300 cursor-not-allowed' : 'bg-black hover:bg-gray-900'
+                loading || finalSubtotal <= 0 ? 'bg-gray-300 cursor-not-allowed' : 'bg-black hover:bg-gray-900'
               }`}
             >
               {loading
                 ? '...'
-                : subtotal > 0
-                ? `Proceed to Checkout · PKR ${Number(subtotal).toLocaleString()}`
+                : finalSubtotal > 0
+                ? `Proceed to Checkout · PKR ${Number(finalSubtotal).toLocaleString()}`
                 : 'Add at least 1 item to continue'}
             </button>
             <p className="text-[11px] text-gray-500 mt-1">

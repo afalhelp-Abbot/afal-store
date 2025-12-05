@@ -216,6 +216,13 @@ async function fetchLpData(slug: string) {
     .eq('product_id', product.id)
     .order('sort', { ascending: true });
 
+  // 8) Promotions for this product
+  const { data: promos } = await supabase
+    .from('product_promotions')
+    .select('id, name, active, type, min_qty, discount_pct, free_qty, start_at, end_at')
+    .eq('product_id', product.id)
+    .order('created_at', { ascending: true });
+
   // 7b) Build accurate color -> thumbnail map using real option mappings
   const colorThumbs: Record<string, string | undefined> = {};
   if (variants && variants.length) {
@@ -247,6 +254,7 @@ async function fetchLpData(slug: string) {
     colorThumbs,
     specs: specs ?? [],
     sections: sections ?? [],
+    promotions: promos || [],
     // load per-product meta pixel config
     pixel: (await (async ()=>{
       const { data: px } = await supabase
@@ -292,7 +300,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
     return <div className="p-6">Landing page not found.</div>;
   }
 
-  const { product, mediaItems, colors, models, packages, sizes, matrix, specs, sections, colorThumbs, variants, pixel } = data as any;
+  const { product, mediaItems, colors, models, packages, sizes, matrix, specs, sections, colorThumbs, variants, pixel, promotions } = data as any;
   const contentIdSource = (pixel && pixel.content_id_source === 'variant_id') ? 'variant_id' : 'sku';
   const variantSkuMap: Record<string, string> = Object.fromEntries(((variants||[]) as any[]).map((v:any)=>[v.id, v.sku]));
   const ctaLabel = (product as any).cta_label || 'Buy on AFAL';
@@ -386,6 +394,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
             variantSkuMap={variantSkuMap}
             ctaLabel={ctaLabel}
             ctaSize={ctaSize as any}
+            promotions={promotions as any}
           />
           <ReviewSummary productId={product.id} />
         </div>
@@ -526,6 +535,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
             chatInstagramUrl={((product as any).chat_enabled ? (product as any).chat_instagram_url : null) as string | null}
             ctaLabel={ctaLabel}
             ctaSize={ctaSize as any}
+            promotions={promotions as any}
           />
           <ReviewSummary productId={product.id} />
           <SocialLinks
