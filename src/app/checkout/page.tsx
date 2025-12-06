@@ -380,8 +380,10 @@ function CheckoutInner() {
       return { contents, value };
     };
     const { contents, value } = build();
-    track('InitiateCheckout', { contents, value, currency: 'PKR', content_type: 'product' });
-    firedInitRef.current = true;
+    const trackOk = track('InitiateCheckout', { contents, value, currency: 'PKR', content_type: 'product' });
+    if (trackOk) {
+      firedInitRef.current = true;
+    }
   }, [pixelCfg, lines, variants, success]);
 
   // Call shipping quote when province/city/qty changes and we have productId
