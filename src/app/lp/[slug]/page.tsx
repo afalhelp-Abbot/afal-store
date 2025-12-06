@@ -230,7 +230,8 @@ async function fetchLpData(slug: string) {
     const byColor: Record<string, any[]> = {};
     for (const v of variants as any[]) {
       const id = v.id as string;
-      const color = colorByVariant[id];
+      // Reuse same color resolution logic as matrix: prefer mapped color, otherwise derive from SKU or 'Default'
+      const color = colorByVariant[id] ?? ((((v as any).sku || '').split('-')[1]) || 'Default');
       if (!color) continue;
       if (!byColor[color]) byColor[color] = [];
       byColor[color].push(v);
@@ -241,6 +242,8 @@ async function fetchLpData(slug: string) {
       colorThumbs[c] = (withThumb?.thumb_url as string | undefined) || undefined;
     }
   }
+
+  const hasColorDimension = Object.keys(colorByVariant).length > 0;
 
   return {
     product,
@@ -255,6 +258,7 @@ async function fetchLpData(slug: string) {
     specs: specs ?? [],
     sections: sections ?? [],
     promotions: promos || [],
+    hasColorDimension,
     // load per-product meta pixel config
     pixel: (await (async ()=>{
       const { data: px } = await supabase
@@ -300,7 +304,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
     return <div className="p-6">Landing page not found.</div>;
   }
 
-  const { product, mediaItems, colors, models, packages, sizes, matrix, specs, sections, colorThumbs, variants, pixel, promotions } = data as any;
+  const { product, mediaItems, colors, models, packages, sizes, matrix, specs, sections, colorThumbs, variants, pixel, promotions, hasColorDimension } = data as any;
   const contentIdSource = (pixel && pixel.content_id_source === 'variant_id') ? 'variant_id' : 'sku';
   const variantSkuMap: Record<string, string> = Object.fromEntries(((variants||[]) as any[]).map((v:any)=>[v.id, v.sku]));
   const ctaLabel = (product as any).cta_label || 'Buy on AFAL';
@@ -395,6 +399,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
             ctaLabel={ctaLabel}
             ctaSize={ctaSize as any}
             promotions={promotions as any}
+            hasColorDimension={hasColorDimension}
           />
           <ReviewSummary productId={product.id} />
         </div>
@@ -536,6 +541,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
             ctaLabel={ctaLabel}
             ctaSize={ctaSize as any}
             promotions={promotions as any}
+            hasColorDimension={hasColorDimension}
           />
           <ReviewSummary productId={product.id} />
           <SocialLinks

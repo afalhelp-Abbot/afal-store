@@ -27,9 +27,10 @@ type BuyPanelProps = {
   ctaLabel?: string;
   ctaSize?: 'small' | 'medium' | 'large';
   promotions?: any[];
+  hasColorDimension?: boolean;
 };
 
-export default function BuyPanel({ colors, models, packages, sizes, matrix, colorThumbs, logoUrl, specialMessage, darazUrl, darazTrustLine, chatFacebookUrl, chatInstagramUrl, contentIdSource, variantSkuMap, ctaLabel: ctaLabelProp, ctaSize, promotions }: BuyPanelProps) {
+export default function BuyPanel({ colors, models, packages, sizes, matrix, colorThumbs, logoUrl, specialMessage, darazUrl, darazTrustLine, chatFacebookUrl, chatInstagramUrl, contentIdSource, variantSkuMap, ctaLabel: ctaLabelProp, ctaSize, promotions, hasColorDimension }: BuyPanelProps) {
   // Helpers to compute availability for an option under current constraints
   const availabilityForColor = React.useCallback((c: string) => {
     return Object.entries(matrix)
@@ -183,6 +184,18 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
   const floatCtaPadding = size === 'small' ? 'px-4 py-1.5' : size === 'large' ? 'px-8 py-4' : 'px-6 py-2.5';
   const floatCtaText = size === 'small' ? 'text-xs' : size === 'large' ? 'text-lg' : 'text-sm';
 
+  // Human-readable label for the primary variant dimension shown above the selector.
+  // If colors are configured, we keep the label "Color". Otherwise we fall back to the
+  // selected Model / Package / Size value (or their first value) so single-variant
+  // products can still show something meaningful like "1-pack".
+  const primaryVariantLabel = React.useMemo(() => {
+    if (hasColorDimension && colors.length > 0) return 'Color';
+    if (models.length > 0) return selectedModel || models[0] || 'Variant';
+    if (packages.length > 0) return selectedPackage || packages[0] || 'Variant';
+    if (sizes.length > 0) return selectedSize || sizes[0] || 'Variant';
+    return 'Variant';
+  }, [hasColorDimension, colors.length, models.length, packages.length, sizes.length, selectedModel, selectedPackage, selectedSize]);
+
   return (
     <div ref={panelRef} className="border rounded-md p-2.5 sm:p-4 space-y-2.5 sm:space-y-4 shadow-sm">
       <div className="flex items-center justify-between">
@@ -196,7 +209,7 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
       </div>
 
       <div>
-        <div className="text-xs sm:text-sm text-gray-600 mb-2">Color{typeof avail === 'number' ? ` · ${avail > 0 ? `${avail} available` : 'Out of stock'}` : ''}</div>
+        <div className="text-xs sm:text-sm text-gray-600 mb-2">{primaryVariantLabel}{typeof avail === 'number' ? ` · ${avail > 0 ? `${avail} available` : 'Out of stock'}` : ''}</div>
         <div className="flex flex-wrap gap-2">
           {sortedColors.map((c) => {
             const active = selectedColor === c;
@@ -460,7 +473,7 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
             {/* Keep quick selectors for Color and Size if multiple options */}
             {colors.length > 1 && (
               <div className="flex items-center gap-2 text-xs">
-                <span className="text-gray-600">Color</span>
+                <span className="text-gray-600">{primaryVariantLabel}</span>
                 {/* Scrollable swatches with scroll-snap and edge fades */}
                 <div className="relative flex-1">
                   <div className="flex gap-2 overflow-x-auto pr-1 snap-x snap-mandatory">

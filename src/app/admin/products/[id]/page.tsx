@@ -823,6 +823,41 @@ export default function EditProductPage() {
     if (!error && data) setPackages((prev) => [...prev, { id: (data as any).id, value: (data as any).value }]);
   };
 
+  // Remove option value (Color/Size/Model/Package) with safety check
+  const removeOptionValue = async (type: 'color' | 'size' | 'model' | 'package', id: number) => {
+    try {
+      // Block delete if any variant still uses this option value
+      const { data: links } = await supabaseBrowser
+        .from('variant_option_values')
+        .select('variant_id')
+        .eq('option_value_id', id)
+        .limit(1);
+      if ((links || []).length > 0) {
+        const msg = 'Cannot delete this option value because one or more variants are using it. Clear it from variants first.';
+        setError(msg);
+        if (typeof window !== 'undefined') {
+          alert(msg);
+        }
+        return;
+      }
+
+      const { error } = await supabaseBrowser.from('option_values').delete().eq('id', id);
+      if (error) throw error;
+
+      if (type === 'color') {
+        setColors((prev) => prev.filter((v) => v.id !== id));
+      } else if (type === 'size') {
+        setSizes((prev) => prev.filter((v) => v.id !== id));
+      } else if (type === 'model') {
+        setModels((prev) => prev.filter((v) => v.id !== id));
+      } else {
+        setPackages((prev) => prev.filter((v) => v.id !== id));
+      }
+    } catch (e: any) {
+      setError(e?.message || 'Failed to delete option value');
+    }
+  };
+
   // Toggle product_options for Color/Size
   const setOptionEnabled = async (type: 'color' | 'size' | 'model' | 'package', enabled: boolean) => {
     const typeId = type === 'color' ? colorTypeId : type === 'size' ? sizeTypeId : type === 'model' ? modelTypeId : packageTypeId;
@@ -1833,7 +1868,20 @@ export default function EditProductPage() {
               <>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {colors.map((c) => (
-                    <span key={c.id} className="px-2 py-1 rounded-full border text-sm">{c.value}</span>
+                    <span
+                      key={c.id}
+                      className="px-2 py-1 rounded-full border text-sm inline-flex items-center gap-1"
+                    >
+                      {c.value}
+                      <button
+                        type="button"
+                        className="text-xs text-red-600 hover:text-red-800"
+                        onClick={() => removeOptionValue('color', c.id)}
+                        title="Delete color value"
+                      >
+                        ×
+                      </button>
+                    </span>
                   ))}
                 </div>
                 <div className="flex gap-2 items-center text-sm">
@@ -1856,7 +1904,20 @@ export default function EditProductPage() {
               <>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {sizes.map((s) => (
-                    <span key={s.id} className="px-2 py-1 rounded-full border text-sm">{s.value}</span>
+                    <span
+                      key={s.id}
+                      className="px-2 py-1 rounded-full border text-sm inline-flex items-center gap-1"
+                    >
+                      {s.value}
+                      <button
+                        type="button"
+                        className="text-xs text-red-600 hover:text-red-800"
+                        onClick={() => removeOptionValue('size', s.id)}
+                        title="Delete size value"
+                      >
+                        ×
+                      </button>
+                    </span>
                   ))}
                 </div>
                 <div className="flex gap-2 items-center text-sm">
@@ -1879,7 +1940,20 @@ export default function EditProductPage() {
               <>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {models.map((m) => (
-                    <span key={m.id} className="px-2 py-1 rounded-full border text-sm">{m.value}</span>
+                    <span
+                      key={m.id}
+                      className="px-2 py-1 rounded-full border text-sm inline-flex items-center gap-1"
+                    >
+                      {m.value}
+                      <button
+                        type="button"
+                        className="text-xs text-red-600 hover:text-red-800"
+                        onClick={() => removeOptionValue('model', m.id)}
+                        title="Delete model value"
+                      >
+                        ×
+                      </button>
+                    </span>
                   ))}
                 </div>
                 <div className="flex gap-2 items-center text-sm">
@@ -1901,7 +1975,20 @@ export default function EditProductPage() {
               <>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {packages.map((p) => (
-                    <span key={p.id} className="px-2 py-1 rounded-full border text-sm">{p.value}</span>
+                    <span
+                      key={p.id}
+                      className="px-2 py-1 rounded-full border text-sm inline-flex items-center gap-1"
+                    >
+                      {p.value}
+                      <button
+                        type="button"
+                        className="text-xs text-red-600 hover:text-red-800"
+                        onClick={() => removeOptionValue('package', p.id)}
+                        title="Delete package value"
+                      >
+                        ×
+                      </button>
+                    </span>
                   ))}
                 </div>
                 <div className="flex gap-2 items-center text-sm">
