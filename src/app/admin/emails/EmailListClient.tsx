@@ -178,7 +178,7 @@ export function EmailListClient({ rows, templates }: { rows: EmailRow[]; templat
                       />
                     ) : null}
                   </td>
-                  <td className="py-2 pr-4 align-top">{name || "-"}</td>
+                  <td className="py-2 pr-4 align-top">{r.name || "-"}</td>
                   <td className="py-2 pr-4 align-top">{email || "-"}</td>
                   <td className="py-2 pr-4 align-top">{r.phone || "-"}</td>
                   <td className="py-2 pr-4 align-top">
