@@ -426,16 +426,21 @@ function CheckoutInner() {
   // Controlled phone field to always keep "+92" prefix
   const [phone, setPhone] = useState("+92");
   const onPhoneChange = (v: string) => {
-    // keep only + and digits
-    let s = v.replace(/[^+\d]/g, "");
-    // normalize to start with +92
-    if (!s.startsWith("+92")) {
-      // remove any leading + or 92 then force +92
-      s = "+92" + s.replace(/^\+?92?/, "");
+    // keep only digits for normalization
+    let digits = v.replace(/\D/g, "");
+    // remove leading country code if present (92... or 0092...)
+    if (digits.startsWith("92")) {
+      digits = digits.slice(2);
+    } else if (digits.startsWith("0092")) {
+      digits = digits.slice(4);
     }
-    // allow only 10 digits after +92
-    const rest = s.slice(3).replace(/\D/g, "").slice(0, 10);
-    setPhone("+92" + rest);
+    // strip leading zeros from local part (handles +92 0300 ... case)
+    while (digits.startsWith("0")) {
+      digits = digits.slice(1);
+    }
+    // keep at most 10 digits for Pakistan local number
+    const rest = digits.slice(0, 10);
+    setPhone(rest ? "+92" + rest : "+92");
   };
 
   const handlePlaceOrder = async (e: React.FormEvent) => {
@@ -544,6 +549,12 @@ function CheckoutInner() {
           province_code: province0 || undefined,
           city: city0 || undefined,
         },
+        promo: promoLabel
+          ? {
+              name: promoLabel,
+              discount: Number(discount || 0),
+            }
+          : null,
         fbMeta: { fbp: fbp || null, fbc: fbc || null },
       };
       const res = await fetch("/api/orders/create", {

@@ -7,7 +7,7 @@ async function fetchOrder(id: string) {
   const supabase = getSupabaseServerClient();
   const { data: order, error } = await supabase
     .from('orders')
-    .select('id, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount')
+    .select('id, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount, discount_total, promo_name')
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;
@@ -22,8 +22,9 @@ async function fetchOrder(id: string) {
 
   const subtotal = (lines ?? []).reduce((sum, it: any) => sum + Number(it.line_total || 0), 0);
   const shipping = Number((order as any).shipping_amount || 0);
-  const total = subtotal + shipping;
-  return { order, items: lines ?? [], total, subtotal, shipping } as const;
+  const discount = Number((order as any).discount_total || 0);
+  const total = subtotal + shipping - discount;
+  return { order, items: lines ?? [], total, subtotal, shipping, discount } as const;
 }
 
 export default async function OrderDetailPage({ params }: { params: { id: string } }) {
@@ -41,7 +42,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
     );
   }
 
-  const { order, items, total, subtotal, shipping } = result as any;
+  const { order, items, total, subtotal, shipping, discount } = result as any;
 
   return (
     <div className="space-y-6">
@@ -107,6 +108,14 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                     <td className="py-2 pr-4" colSpan={3}>Shipping</td>
                     <td className="py-2 pr-4">{Number(shipping || 0).toLocaleString()} PKR</td>
                   </tr>
+                  {Number(discount || 0) > 0 && (
+                    <tr>
+                      <td className="py-2 pr-4 text-green-700" colSpan={3}>
+                        {order.promo_name || 'Promotion discount'}
+                      </td>
+                      <td className="py-2 pr-4 text-green-700">- {Number(discount || 0).toLocaleString()} PKR</td>
+                    </tr>
+                  )}
                   <tr>
                     <td className="py-2 pr-4 font-medium" colSpan={3}>Total</td>
                     <td className="py-2 pr-4 font-medium">{Number(total || 0).toLocaleString()} PKR</td>

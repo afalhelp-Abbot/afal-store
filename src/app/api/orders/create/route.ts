@@ -50,11 +50,16 @@ export async function POST(req: Request) {
     }
     // Delegate atomic creation + reservation to Postgres function `place_order`
     const shippingAmount = Number((body?.shipping?.amount as any) || 0);
-    const { data, error } = await supabase.rpc('place_order', {
+    const promo = body?.promo || null;
+    const discountTotal = Number(promo?.discount || 0);
+    const promoName = promo?.name ? String(promo.name) : null;
+    const { data, error } = await supabase.rpc('place_order_v2', {
       p_customer: customer,
       p_items: items,
       p_utm: body?.utm ?? {},
       p_shipping_amount: shippingAmount,
+      p_discount_total: discountTotal,
+      p_promo_name: promoName,
     });
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
