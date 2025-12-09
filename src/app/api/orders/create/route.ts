@@ -65,6 +65,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
     const orderId = data as string;
+
+    // Upsert into email_list for future campaigns (non-blocking)
+    try {
+      const email = (customer.email || '').trim();
+      if (email) {
+        await getSupabaseServiceClient()
+          .from('email_list')
+          .upsert(
+            {
+              email: email.toLowerCase(),
+              name: customer.name || null,
+              phone: customer.phone || null,
+              city: customer.city || null,
+              province_code: customer.province_code || null,
+              last_order_at: new Date().toISOString(),
+              source: 'order',
+            },
+            { onConflict: 'email' },
+          );
+      }
+    } catch (e) {
+      console.error('[orders/create] email_list upsert failed', e);
+    }
+
     // Try to send an email notification (non-blocking)
     try {
       const RESEND_API_KEY = process.env.RESEND_API_KEY;

@@ -8,7 +8,7 @@ async function fetchOrders(search: Search) {
   const supabase = getSupabaseServerClient();
   let query = supabase
     .from('orders')
-    .select('id, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount')
+    .select('id, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount, discount_total')
     .order('created_at', { ascending: false })
     .limit(50);
 
@@ -52,7 +52,10 @@ async function fetchOrders(search: Search) {
   }
   return (data ?? []).map((o) => ({
     ...o,
-    total: (totals[String(o.id)] ?? 0) + Number((o as any).shipping_amount || 0),
+    total:
+      (totals[String(o.id)] ?? 0) +
+      Number((o as any).shipping_amount || 0) -
+      Number((o as any).discount_total || 0),
   }));
 }
 
