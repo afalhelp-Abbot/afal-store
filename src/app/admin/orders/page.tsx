@@ -147,7 +147,11 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
                 <td className="py-2 pr-4">{o.city} {o.province_code ? `(${o.province_code})` : ''}</td>
                 <td className="py-2 pr-4 capitalize">{o.status}</td>
                 <td className="py-2 pr-4">{Number(o.total).toLocaleString()} PKR</td>
-                <td className="py-2 pr-4">{new Date(o.created_at).toLocaleString()}</td>
+                <td className="py-2 pr-4">
+                  {new Date(o.created_at).toLocaleString('en-PK', {
+                    timeZone: 'Asia/Karachi',
+                  })}
+                </td>
               </tr>
             ))}
             {orders.length === 0 && (
