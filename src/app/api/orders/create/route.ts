@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServiceClient } from '@/lib/supabaseService';
 import crypto from 'crypto';
+import { getMetaContentId } from '@/lib/metaContentId';
 
 /*
 Expected payload (JSON):
@@ -219,28 +220,31 @@ export async function POST(req: Request) {
           .eq('order_id', orderId);
         const lineRows2 = (lines2 as any[]) || [];
         const value = lineRows2.reduce((s, r) => s + Number(r.line_total || 0), 0) + Number((body?.shipping?.amount as any) || 0); // include shipping
-        const contents = lineRows2.map(r => ({ id: r?.variants?.sku || r.variant_id, quantity: Number(r.qty), item_price: Number(r.unit_price) }));
 
-        // Resolve pixel: if exactly one enabled per-product pixel among products in the order, use it; else fallback to global
+        // Resolve pixel and content_id_source: if exactly one enabled per-product pixel among products in the order, use it; else fallback to global and default sku
         const productIdsSet = new Set<string>();
         for (const r of lineRows2) {
           const pid = (r as any)?.variants?.product_id as string | undefined;
           if (pid) productIdsSet.add(pid);
         }
         let resolvedPixelId: string | undefined = undefined;
+        let resolvedContentIdSource: 'sku' | 'variant_id' = 'sku';
         let resolveReason = 'no_products';
         if (productIdsSet.size > 0) {
           const productIds = Array.from(productIdsSet);
           const { data: pixelRows } = await getSupabaseServiceClient()
             .from('product_pixel')
-            .select('product_id, enabled, pixel_id')
+            .select('product_id, enabled, pixel_id, content_id_source')
             .in('product_id', productIds);
-          const enabledPixels = (pixelRows || [])
-            .filter((p: any) => !!p?.enabled && !!(p?.pixel_id || '').trim())
-            .map((p: any) => String(p.pixel_id).trim());
+          const enabledRows = (pixelRows || []).filter((p: any) => !!p?.enabled && !!(p?.pixel_id || '').trim());
+          const enabledPixels = enabledRows.map((p: any) => String(p.pixel_id).trim());
           const distinct = Array.from(new Set(enabledPixels));
           if (distinct.length === 1) {
             resolvedPixelId = distinct[0];
+            const sources = Array.from(new Set(enabledRows.map((p: any) => (p.content_id_source === 'variant_id' ? 'variant_id' : 'sku'))));
+            if (sources.length === 1) {
+              resolvedContentIdSource = sources[0] as 'sku' | 'variant_id';
+            }
             resolveReason = 'single_per_product_pixel';
           } else if (distinct.length > 1) {
             resolveReason = 'multiple_per_product_pixels_fallback_global';
@@ -250,6 +254,7 @@ export async function POST(req: Request) {
         }
         if (!resolvedPixelId) {
           resolvedPixelId = (GLOBAL_PIXEL_ID || '').trim() || undefined;
+          resolvedContentIdSource = 'sku';
         }
 
         console.log('[orders/create] FB CAPI pixel resolve', {
@@ -278,6 +283,12 @@ export async function POST(req: Request) {
           // Normalize PK phone like +92XXXXXXXXXX before hashing
           const normPhone = (p?: string | null) => (p ? p.replace(/\D/g, '') : undefined);
           const ph = sha256(normPhone(body?.customer?.phone || null));
+
+          const contents = lineRows2.map((r) => ({
+            id: getMetaContentId({ id: String((r as any).variant_id), sku: (r as any)?.variants?.sku || null }, resolvedContentIdSource),
+            quantity: Number((r as any).qty),
+            item_price: Number((r as any).unit_price),
+          }));
 
           const payload = {
             data: [

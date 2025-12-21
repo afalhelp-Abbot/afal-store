@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 import Link from "next/link";
 import { ensurePixel, track } from "@/lib/pixel";
+import { getMetaContentId } from "@/lib/metaContentId";
 
 type CartItem = { variant_id: string; qty: number };
 
@@ -371,11 +372,14 @@ function CheckoutInner() {
     const ok = ensurePixel(pixelCfg.pixel_id);
     if (!ok) return;
     const build = () => {
-      const contents = lines.map((ln) => ({
-        id: (pixelCfg.content_id_source === 'variant_id' ? ln.variant_id : (variants[ln.variant_id]?.sku || ln.variant_id)),
-        quantity: ln.qty,
-        item_price: Number(variants[ln.variant_id]?.price || 0),
-      }));
+      const contents = lines.map((ln) => {
+        const v = variants[ln.variant_id];
+        return {
+          id: getMetaContentId({ id: ln.variant_id, sku: v?.sku || null }, pixelCfg.content_id_source),
+          quantity: ln.qty,
+          item_price: Number(v?.price || 0),
+        };
+      });
       const value = lines.reduce((s, ln) => s + (Number(variants[ln.variant_id]?.price || 0) * ln.qty), 0);
       return { contents, value };
     };
@@ -477,21 +481,6 @@ function CheckoutInner() {
         return;
       }
 
-      // Fire AddPaymentInfo once when user submits
-      if (!firedAddPaymentRef.current && pixelCfg && pixelCfg.enabled && pixelCfg.pixel_id && !(pixelCfg.events && pixelCfg.events.add_payment_info === false)) {
-        const okPx = ensurePixel(pixelCfg.pixel_id);
-        if (okPx) {
-          const contents = lines.map((ln) => ({
-            id: (pixelCfg.content_id_source === 'variant_id' ? ln.variant_id : (variants[ln.variant_id]?.sku || ln.variant_id)),
-            quantity: ln.qty,
-            item_price: Number(variants[ln.variant_id]?.price || 0),
-          }));
-          const value = lines.reduce((s, ln) => s + (Number(variants[ln.variant_id]?.price || 0) * ln.qty), 0);
-          track('AddPaymentInfo', { contents, value, currency: 'PKR', content_type: 'product' });
-          firedAddPaymentRef.current = true;
-        }
-      }
-
       // Validate availability first
       const ids = lines.map((x) => x.variant_id);
       if (ids.length) {
@@ -521,6 +510,24 @@ function CheckoutInner() {
           );
           setPlacing(false);
           return;
+        }
+      }
+
+      // Fire AddPaymentInfo once after stock is confirmed
+      if (!firedAddPaymentRef.current && pixelCfg && pixelCfg.enabled && pixelCfg.pixel_id && !(pixelCfg.events && pixelCfg.events.add_payment_info === false)) {
+        const okPx = ensurePixel(pixelCfg.pixel_id);
+        if (okPx) {
+          const contents = lines.map((ln) => {
+            const v = variants[ln.variant_id];
+            return {
+              id: getMetaContentId({ id: ln.variant_id, sku: v?.sku || null }, pixelCfg.content_id_source),
+              quantity: ln.qty,
+              item_price: Number(v?.price || 0),
+            };
+          });
+          const value = lines.reduce((s, ln) => s + (Number(variants[ln.variant_id]?.price || 0) * ln.qty), 0);
+          track('AddPaymentInfo', { contents, value, currency: 'PKR', content_type: 'product' });
+          firedAddPaymentRef.current = true;
         }
       }
       const fd = new FormData(formRef.current);
@@ -571,18 +578,21 @@ function CheckoutInner() {
       const ship = Number(shippingAmount || 0);
       setSuccessTotals({ subtotal: s, shipping: ship, total: s + ship });
 
-      // Fire Purchase (exclude shipping) after success
+      // Fire Purchase after success (include shipping)
       if (!firedPurchaseRef.current && pixelCfg && pixelCfg.enabled && pixelCfg.pixel_id && !(pixelCfg.events && pixelCfg.events.purchase === false)) {
         const okPx2 = ensurePixel(pixelCfg.pixel_id);
         if (okPx2) {
-          const contents = lines.map((ln) => ({
-            id: (pixelCfg.content_id_source === 'variant_id' ? ln.variant_id : (variants[ln.variant_id]?.sku || ln.variant_id)),
-            quantity: ln.qty,
-            item_price: Number(variants[ln.variant_id]?.price || 0),
-          }));
-          const value = Number(subtotal) || 0; // exclude shipping per requirement
-          // Include event_id returned from server (order_id) to dedupe with CAPI
-          track('Purchase', { contents, value, currency: 'PKR', content_type: 'product', event_id: data.order_id });
+          const contents = lines.map((ln) => {
+            const v = variants[ln.variant_id];
+            return {
+              id: getMetaContentId({ id: ln.variant_id, sku: v?.sku || null }, pixelCfg.content_id_source),
+              quantity: ln.qty,
+              item_price: Number(v?.price || 0),
+            };
+          });
+          const value = (Number(subtotal) || 0) + (Number(shippingAmount) || 0);
+          // Include eventID returned from server (order_id) to dedupe with CAPI
+          track('Purchase', { contents, value, currency: 'PKR', content_type: 'product' }, { eventID: String(data.order_id) });
           firedPurchaseRef.current = true;
         }
       }

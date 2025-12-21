@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect } from "react";
 import { ensurePixel, track } from "@/lib/pixel";
+import { getMetaContentId } from "@/lib/metaContentId";
 
 export type PixelConfig = {
   enabled: boolean;
@@ -26,7 +27,9 @@ export default function LPViewPixel({ productId, productName, variants, config }
     }
     const ok = ensurePixel(config.pixel_id);
     if (!ok) return;
-    const ids = variants.map((v) => (config.content_id_source === "variant_id" ? v.id : v.sku)).filter(Boolean);
+    const ids = variants
+      .map((v) => getMetaContentId({ id: v.id, sku: v.sku }, config.content_id_source))
+      .filter(Boolean);
     const minPrice = variants.reduce((m, v) => Math.min(m, Number(v.price) || Infinity), Infinity);
     const value = Number.isFinite(minPrice) ? minPrice : undefined;
     track("PageView");
