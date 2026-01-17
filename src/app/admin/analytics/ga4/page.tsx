@@ -6,7 +6,6 @@ import { supabaseBrowser } from "@/lib/supabaseBrowser";
 const GA_ID_REGEX = /^G-[A-Za-z0-9]+$/;
 
 type AppSettingsRow = {
-  id?: string | number;
   ga4_measurement_id: string | null;
   ga4_enabled_default: boolean | null;
 };
@@ -17,7 +16,6 @@ export default function AdminGa4SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const [rowId, setRowId] = useState<string | number | null>(null);
   const [measurementId, setMeasurementId] = useState<string>("");
   const [enabledDefault, setEnabledDefault] = useState<boolean>(true);
   const [idWarning, setIdWarning] = useState<string | null>(null);
@@ -29,16 +27,14 @@ export default function AdminGa4SettingsPage() {
         setError(null);
         const { data, error } = await supabaseBrowser
           .from("app_settings")
-          .select("id, ga4_measurement_id, ga4_enabled_default")
+          .select("ga4_measurement_id, ga4_enabled_default")
           .limit(1)
           .maybeSingle<AppSettingsRow>();
         if (error) throw error;
         if (data) {
-          setRowId((data as any).id ?? null);
           setMeasurementId((data as any).ga4_measurement_id || "");
           setEnabledDefault(Boolean((data as any).ga4_enabled_default ?? true));
         } else {
-          setRowId(null);
           setMeasurementId("");
           setEnabledDefault(true);
         }
@@ -72,22 +68,24 @@ export default function AdminGa4SettingsPage() {
         ga4_measurement_id: measurementId.trim() || null,
         ga4_enabled_default: enabledDefault,
       };
-      if (rowId != null) {
-        const { error } = await supabaseBrowser
+      // Treat app_settings as a singleton row without an id column.
+      // If a row exists, update all rows; otherwise insert one row.
+      const { data: existing, error: loadErr } = await supabaseBrowser
+        .from("app_settings")
+        .select("ga4_measurement_id")
+        .limit(1)
+        .maybeSingle();
+      if (loadErr) throw loadErr;
+      if (existing) {
+        const { error: updErr } = await supabaseBrowser
           .from("app_settings")
-          .update(payload)
-          .eq("id", rowId);
-        if (error) throw error;
+          .update(payload);
+        if (updErr) throw updErr;
       } else {
-        const { data, error } = await supabaseBrowser
+        const { error: insErr } = await supabaseBrowser
           .from("app_settings")
-          .insert(payload)
-          .select("id, ga4_measurement_id, ga4_enabled_default")
-          .maybeSingle<AppSettingsRow>();
-        if (error) throw error;
-        if (data && (data as any).id != null) {
-          setRowId((data as any).id as any);
-        }
+          .insert(payload);
+        if (insErr) throw insErr;
       }
       setSuccess("GA4 settings saved.");
     } catch (e: any) {
@@ -158,7 +156,7 @@ export default function AdminGa4SettingsPage() {
               saving ? "bg-gray-400" : "bg-black hover:bg-gray-900"
             } disabled:opacity-50`}
           >
-            {saving ? "Saving" : "Save settings"}
+            {saving ? "Saving..." : "Save settings"}
           </button>
         </div>
       </div>
