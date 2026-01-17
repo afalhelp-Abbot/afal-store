@@ -79,7 +79,8 @@ export default function AdminGa4SettingsPage() {
       if (existing) {
         const { error: updErr } = await supabaseBrowser
           .from("app_settings")
-          .update(payload);
+          .update(payload)
+          .is("ga4_measurement_id", (existing as any).ga4_measurement_id);
         if (updErr) throw updErr;
       } else {
         const { error: insErr } = await supabaseBrowser
