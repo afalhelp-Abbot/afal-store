@@ -7,6 +7,7 @@
   import RichTextEditor from '@/components/admin/RichTextEditor';
   import { slugify } from '@/lib/slugify';
   import ProductMetaPixelModal from '@/components/admin/ProductMetaPixelModal';
+  import ProductGa4Modal from '@/components/admin/ProductGa4Modal';
 
 const BUCKET = 'product-media';
 const MAX_IMAGE_MB = 10; // client-side hint, actual limit enforced by storage
@@ -261,6 +262,7 @@ export default function EditProductPage() {
   const [variantsDirtyFlag, setVariantsDirtyFlag] = useState(false);
   const [variantFormChangedFlag, setVariantFormChangedFlag] = useState(false);
   const [pixelOpen, setPixelOpen] = useState(false);
+  const [ga4Open, setGa4Open] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -1422,11 +1424,14 @@ export default function EditProductPage() {
         <div className="flex items-center gap-2">
           <a href={`/lp/${slug}`} target="_blank" className="px-3 py-2 rounded border">View LP</a>
           <button type="button" className="px-3 py-2 rounded border" onClick={()=>setPixelOpen(true)}>Meta Pixel</button>
+          <button type="button" className="px-3 py-2 rounded border" onClick={()=>setGa4Open(true)}>GA4</button>
         </div>
       </div>
 
       {/* Meta Pixel Modal */}
       <ProductMetaPixelModal productId={params.id} open={pixelOpen} onClose={()=>setPixelOpen(false)} />
+      {/* GA4 Modal */}
+      <ProductGa4Modal productId={params.id} open={ga4Open} onClose={()=>setGa4Open(false)} />
 
       {/* Basics */}
       <section className="space-y-4 border rounded p-4">

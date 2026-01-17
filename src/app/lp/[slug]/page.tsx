@@ -9,6 +9,7 @@ import UTMCapture from '@/components/web/landing/UTMCapture';
 import LPViewPixel from '@/components/web/pixel/LPViewPixel';
 import SocialLinks from '@/components/web/landing/SocialLinks';
 import TrackedVideo from '@/components/web/landing/TrackedVideo';
+import LpGa4Tracker from '@/components/web/ga4/LpGa4Tracker';
 
 // Render helper: if the string looks like HTML, inject as HTML. Otherwise, render paragraphs
 // and preserve single line breaks. Urdu is rendered RTL with the Urdu font class.
@@ -71,7 +72,7 @@ async function fetchLpData(slug: string) {
   // 1) Product by slug
   const { data: product } = await supabase
     .from('products')
-    .select('id, name, slug, description_en, description_ur, active, logo_url, daraz_enabled, daraz_url, daraz_trust_line, chat_enabled, chat_facebook_url, chat_instagram_url, special_message, cta_label, cta_size, fb_page_url, instagram_url, whatsapp_url, contact_email, contact_phone, fb_page_enabled, instagram_enabled, whatsapp_enabled, contact_email_enabled, contact_phone_enabled')
+    .select('id, name, slug, description_en, description_ur, active, logo_url, daraz_enabled, daraz_url, daraz_trust_line, chat_enabled, chat_facebook_url, chat_instagram_url, special_message, cta_label, cta_size, fb_page_url, instagram_url, whatsapp_url, contact_email, contact_phone, fb_page_enabled, instagram_enabled, whatsapp_enabled, contact_email_enabled, contact_phone_enabled, ga4_enabled_override, ga4_measurement_id_override')
     .eq('slug', slug)
     .eq('active', true)
     .maybeSingle();
@@ -223,6 +224,13 @@ async function fetchLpData(slug: string) {
     .eq('product_id', product.id)
     .order('created_at', { ascending: true });
 
+  // 9) GA4 global settings (singleton row)
+  const { data: appSettings } = await supabase
+    .from('app_settings')
+    .select('ga4_measurement_id, ga4_enabled_default')
+    .limit(1)
+    .maybeSingle();
+
   // 7b) Build accurate color -> thumbnail map using real option mappings
   const colorThumbs: Record<string, string | undefined> = {};
   if (variants && variants.length) {
@@ -259,6 +267,8 @@ async function fetchLpData(slug: string) {
     sections: sections ?? [],
     promotions: promos || [],
     hasColorDimension,
+    gaGlobal: appSettings ? { ga4_measurement_id: (appSettings as any).ga4_measurement_id || null, ga4_enabled_default: (appSettings as any).ga4_enabled_default ?? true } : null,
+    gaProduct: { ga4_enabled_override: (product as any).ga4_enabled_override ?? null, ga4_measurement_id_override: (product as any).ga4_measurement_id_override || null },
     // load per-product meta pixel config
     pixel: (await (async ()=>{
       const { data: px } = await supabase
@@ -304,7 +314,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
     return <div className="p-6">Landing page not found.</div>;
   }
 
-  const { product, mediaItems, colors, models, packages, sizes, matrix, specs, sections, colorThumbs, variants, pixel, promotions, hasColorDimension } = data as any;
+  const { product, mediaItems, colors, models, packages, sizes, matrix, specs, sections, colorThumbs, variants, pixel, promotions, hasColorDimension, gaGlobal, gaProduct } = data as any;
   const contentIdSource = (pixel && pixel.content_id_source === 'variant_id') ? 'variant_id' : 'sku';
   const variantSkuMap: Record<string, string> = Object.fromEntries(((variants||[]) as any[]).map((v:any)=>[v.id, v.sku]));
   const ctaLabel = (product as any).cta_label || 'Buy on AFAL';
@@ -339,6 +349,16 @@ export default async function LandingPage({ params }: { params: { slug: string }
   return (
     <div className="max-w-6xl mx-auto p-3 sm:p-5 md:p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-3 sm:gap-6 lg:gap-8 items-start">
       <UTMCapture />
+      <LpGa4Tracker
+        globalGa={gaGlobal || null}
+        productGa={gaProduct || null}
+        product={{ id: product.id, slug: product.slug, name: product.name }}
+        variants={(variants || []).map((v: any) => ({
+          id: v.id as string,
+          sku: (v.sku as string | null) ?? null,
+          price: v.price != null ? Number(v.price) : null,
+        }))}
+      />
       {/* Meta Pixel: ViewContent */}
       <LPViewPixel
         productId={product.id}

@@ -1,0 +1,545 @@
+[1mdiff --git a/src/app/admin/orders/[id]/page.tsx b/src/app/admin/orders/[id]/page.tsx[m
+[1mindex 61ba43a..b6a195f 100644[m
+[1m--- a/src/app/admin/orders/[id]/page.tsx[m
+[1m+++ b/src/app/admin/orders/[id]/page.tsx[m
+[36m@@ -7,7 +7,7 @@[m [masync function fetchOrder(id: string) {[m
+   const supabase = getSupabaseServerClient();[m
+   const { data: order, error } = await supabase[m
+     .from('orders')[m
+[31m-    .select('id, status, customer_name, email, phone, address, city, province_code, created_at')[m
+[32m+[m[32m    .select('id, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount')[m
+     .eq('id', id)[m
+     .maybeSingle();[m
+   if (error) throw error;[m
+[36m@@ -20,8 +20,10 @@[m [masync function fetchOrder(id: string) {[m
+     .eq('order_id', id);[m
+   if (linesError) throw linesError;[m
+ [m
+[31m-  const total = (lines ?? []).reduce((sum, it: any) => sum + Number(it.line_total || 0), 0);[m
+[31m-  return { order, items: lines ?? [], total } as const;[m
+[32m+[m[32m  const subtotal = (lines ?? []).reduce((sum, it: any) => sum + Number(it.line_total || 0), 0);[m
+[32m+[m[32m  const shipping = Number((order as any).shipping_amount || 0);[m
+[32m+[m[32m  const total = subtotal + shipping;[m
+[32m+[m[32m  return { order, items: lines ?? [], total, subtotal, shipping } as const;[m
+ }[m
+ [m
+ export default async function OrderDetailPage({ params }: { params: { id: string } }) {[m
+[36m@@ -39,7 +41,7 @@[m [mexport default async function OrderDetailPage({ params }: { params: { id: string[m
+     );[m
+   }[m
+ [m
+[31m-  const { order, items, total } = result;[m
+[32m+[m[32m  const { order, items, total, subtotal, shipping } = result as any;[m
+ [m
+   return ([m
+     <div className="space-y-6">[m
+[36m@@ -97,9 +99,17 @@[m [mexport default async function OrderDetailPage({ params }: { params: { id: string[m
+                   ))}[m
+                 </tbody>[m
+                 <tfoot>[m
+[32m+[m[32m                  <tr>[m
+[32m+[m[32m                    <td className="py-2 pr-4" colSpan={3}>Items subtotal</td>[m
+[32m+[m[32m                    <td className="py-2 pr-4">{Number(subtotal || 0).toLocaleString()} PKR</td>[m
+[32m+[m[32m                  </tr>[m
+[32m+[m[32m                  <tr>[m
+[32m+[m[32m                    <td className="py-2 pr-4" colSpan={3}>Shipping</td>[m
+[32m+[m[32m                    <td className="py-2 pr-4">{Number(shipping || 0).toLocaleString()} PKR</td>[m
+[32m+[m[32m                  </tr>[m
+                   <tr>[m
+                     <td className="py-2 pr-4 font-medium" colSpan={3}>Total</td>[m
+[31m-                    <td className="py-2 pr-4 font-medium">{total.toLocaleString()} PKR</td>[m
+[32m+[m[32m                    <td className="py-2 pr-4 font-medium">{Number(total || 0).toLocaleString()} PKR</td>[m
+                   </tr>[m
+                 </tfoot>[m
+               </table>[m
+[36m@@ -155,7 +165,7 @@[m [masync function updateStatusAction(formData: FormData) {[m
+   }[m
+ [m
+   const { data: items, error: itemsErr } = await supabase[m
+[31m-    .from('order_items')[m
+[32m+[m[32m    .from('order_lines')[m
+     .select('variant_id, qty')[m
+     .eq('order_id', id);[m
+   if (itemsErr) return { ok: false, message: itemsErr.message } as const;[m
+[1mdiff --git a/src/app/admin/orders/page.tsx b/src/app/admin/orders/page.tsx[m
+[1mindex 93b1043..408ae9b 100644[m
+[1m--- a/src/app/admin/orders/page.tsx[m
+[1m+++ b/src/app/admin/orders/page.tsx[m
+[36m@@ -1,4 +1,4 @@[m
+[31m-import { requireAdmin } from '@/lib/auth';[m
+[32m+[m[32mcsimport { requireAdmin } from '@/lib/auth';[m
+ import { getSupabaseServerClient } from '@/lib/supabaseServer';[m
+ import Link from 'next/link';[m
+ [m
+[36m@@ -8,7 +8,7 @@[m [masync function fetchOrders(search: Search) {[m
+   const supabase = getSupabaseServerClient();[m
+   let query = supabase[m
+     .from('orders')[m
+[31m-    .select('id, status, customer_name, email, phone, address, city, province_code, created_at')[m
+[32m+[m[32m    .select('id, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount')[m
+     .order('created_at', { ascending: false })[m
+     .limit(50);[m
+ [m
+[36m@@ -50,7 +50,10 @@[m [masync function fetchOrders(search: Search) {[m
+     const key = String((ln as any).order_id);[m
+     totals[key] = (totals[key] ?? 0) + Number((ln as any).line_total || 0);[m
+   }[m
+[31m-  return (data ?? []).map((o) => ({ ...o, total: totals[String(o.id)] ?? 0 }));[m
+[32m+[m[32m  return (data ?? []).map((o) => ({[m
+[32m+[m[32m    ...o,[m
+[32m+[m[32m    total: (totals[String(o.id)] ?? 0) + Number((o as any).shipping_amount || 0),[m
+[32m+[m[32m  }));[m
+ }[m
+ [m
+ export default async function OrdersPage({ searchParams }: { searchParams: Search }) {[m
+[1mdiff --git a/src/app/admin/products/[id]/page.tsx b/src/app/admin/products/[id]/page.tsx[m
+[1mindex 9488c4a..425d9e3 100644[m
+[1m--- a/src/app/admin/products/[id]/page.tsx[m
+[1m+++ b/src/app/admin/products/[id]/page.tsx[m
+[36m@@ -32,6 +32,11 @@[m [mtype Product = {[m
+   whatsapp_url?: string | null;[m
+   contact_email?: string | null;[m
+   contact_phone?: string | null;[m
+[32m+[m[32m  fb_page_enabled?: boolean | null;[m
+[32m+[m[32m  instagram_enabled?: boolean | null;[m
+[32m+[m[32m  whatsapp_enabled?: boolean | null;[m
+[32m+[m[32m  contact_email_enabled?: boolean | null;[m
+[32m+[m[32m  contact_phone_enabled?: boolean | null;[m
+ };[m
+ [m
+ type Media = {[m
+[36m@@ -165,8 +170,13 @@[m [mexport default function EditProductPage() {[m
+   const [whatsappUrl, setWhatsappUrl] = useState<string>('');[m
+   const [contactEmail, setContactEmail] = useState<string>('');[m
+   const [contactPhone, setContactPhone] = useState<string>('');[m
+[32m+[m[32m  const [fbPageEnabled, setFbPageEnabled] = useState<boolean>(false);[m
+[32m+[m[32m  const [instagramEnabled, setInstagramEnabled] = useState<boolean>(false);[m
+[32m+[m[32m  const [whatsappEnabled, setWhatsappEnabled] = useState<boolean>(false);[m
+[32m+[m[32m  const [contactEmailEnabled, setContactEmailEnabled] = useState<boolean>(false);[m
+[32m+[m[32m  const [contactPhoneEnabled, setContactPhoneEnabled] = useState<boolean>(false);[m
+   // snapshot of loaded basics[m
+[31m-  const [initialBasics, setInitialBasics] = useState<{ name: string; slug: string; active: boolean; descriptionEn: string; descriptionUr: string; logoUrl: string; darazEnabled: boolean; darazUrl: string; darazTrustLine: boolean; chatEnabled: boolean; chatFacebookUrl: string; chatInstagramUrl: string; specialMessage: string; fbPageUrl: string; instagramUrl: string; whatsappUrl: string; contactEmail: string; contactPhone: string; ctaLabel: string; ctaSize: 'small' | 'medium' | 'large' } | null>(null);[m
+[32m+[m[32m  const [initialBasics, setInitialBasics] = useState<{ name: string; slug: string; active: boolean; descriptionEn: string; descriptionUr: string; logoUrl: string; darazEnabled: boolean; darazUrl: string; darazTrustLine: boolean; chatEnabled: boolean; chatFacebookUrl: string; chatInstagramUrl: string; specialMessage: string; fbPageUrl: string; instagramUrl: string; whatsappUrl: string; contactEmail: string; contactPhone: string; fbPageEnabled: boolean; instagramEnabled: boolean; whatsappEnabled: boolean; contactEmailEnabled: boolean; contactPhoneEnabled: boolean; ctaLabel: string; ctaSize: 'small' | 'medium' | 'large' } | null>(null);[m
+   // dirty flags for variants and add-variant form[m
+   const [variantsDirtyFlag, setVariantsDirtyFlag] = useState(false);[m
+   const [variantFormChangedFlag, setVariantFormChangedFlag] = useState(false);[m
+[36m@@ -179,7 +189,7 @@[m [mexport default function EditProductPage() {[m
+       try {[m
+         const { data: p, error: pErr } = await supabaseBrowser[m
+           .from('products')[m
+[31m-          .select('id, name, slug, active, description_en, description_ur, logo_url, daraz_enabled, daraz_url, daraz_trust_line, chat_enabled, chat_facebook_url, chat_instagram_url, special_message, fb_page_url, instagram_url, whatsapp_url, contact_email, contact_phone, cta_label, cta_size')[m
+[32m+[m[32m          .select('id, name, slug, active, description_en, description_ur, logo_url, daraz_enabled, daraz_url, daraz_trust_line, chat_enabled, chat_facebook_url, chat_instagram_url, special_message, fb_page_url, instagram_url, whatsapp_url, contact_email, contact_phone, fb_page_enabled, instagram_enabled, whatsapp_enabled, contact_email_enabled, contact_phone_enabled, cta_label, cta_size')[m
+           .eq('id', params.id)[m
+           .maybeSingle();[m
+         if (pErr) throw pErr;[m
+[36m@@ -203,6 +213,11 @@[m [mexport default function EditProductPage() {[m
+         setWhatsappUrl((p as any).whatsapp_url || '');[m
+         setContactEmail((p as any).contact_email || '');[m
+         setContactPhone((p as any).contact_phone || '');[m
+[32m+[m[32m        setFbPageEnabled(Boolean((p as any).fb_page_enabled));[m
+[32m+[m[32m        setInstagramEnabled(Boolean((p as any).instagram_enabled));[m
+[32m+[m[32m        setWhatsappEnabled(Boolean((p as any).whatsapp_enabled));[m
+[32m+[m[32m        setContactEmailEnabled(Boolean((p as any).contact_email_enabled));[m
+[32m+[m[32m        setContactPhoneEnabled(Boolean((p as any).contact_phone_enabled));[m
+         setCtaLabel((p as any).cta_label || '');[m
+         setCtaSize(((p as any).cta_size as 'small' | 'medium' | 'large') || 'medium');[m
+         setInitialBasics({[m
+[36m@@ -224,6 +239,11 @@[m [mexport default function EditProductPage() {[m
+           whatsappUrl: (p as any).whatsapp_url || '',[m
+           contactEmail: (p as any).contact_email || '',[m
+           contactPhone: (p as any).contact_phone || '',[m
+[32m+[m[32m          fbPageEnabled: Boolean((p as any).fb_page_enabled),[m
+[32m+[m[32m          instagramEnabled: Boolean((p as any).instagram_enabled),[m
+[32m+[m[32m          whatsappEnabled: Boolean((p as any).whatsapp_enabled),[m
+[32m+[m[32m          contactEmailEnabled: Boolean((p as any).contact_email_enabled),[m
+[32m+[m[32m          contactPhoneEnabled: Boolean((p as any).contact_phone_enabled),[m
+           ctaLabel: (p as any).cta_label || '',[m
+           ctaSize: (((p as any).cta_size as 'small' | 'medium' | 'large') || 'medium'),[m
+         });[m
+[36m@@ -366,12 +386,17 @@[m [mexport default function EditProductPage() {[m
+           whatsapp_url: whatsappUrl || null,[m
+           contact_email: contactEmail || null,[m
+           contact_phone: contactPhone || null,[m
+[32m+[m[32m          fb_page_enabled: fbPageEnabled,[m
+[32m+[m[32m          instagram_enabled: instagramEnabled,[m
+[32m+[m[32m          whatsapp_enabled: whatsappEnabled,[m
+[32m+[m[32m          contact_email_enabled: contactEmailEnabled,[m
+[32m+[m[32m          contact_phone_enabled: contactPhoneEnabled,[m
+         })[m
+         .eq('id', params.id);[m
+       if (error) throw error;[m
+       router.refresh();[m
+       // update snapshot after successful save[m
+[31m-      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, darazTrustLine, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage, fbPageUrl, instagramUrl, whatsappUrl, contactEmail, contactPhone, ctaLabel, ctaSize });[m
+[32m+[m[32m      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, darazTrustLine, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage, fbPageUrl, instagramUrl, whatsappUrl, contactEmail, contactPhone, fbPageEnabled, instagramEnabled, whatsappEnabled, contactEmailEnabled, contactPhoneEnabled, ctaLabel, ctaSize });[m
+     } catch (e: any) {[m
+       setError(e?.message || 'Failed to save product');[m
+     } finally {[m
+[36m@@ -401,6 +426,11 @@[m [mexport default function EditProductPage() {[m
+       initialBasics.whatsappUrl !== whatsappUrl ||[m
+       initialBasics.contactEmail !== contactEmail ||[m
+       initialBasics.contactPhone !== contactPhone ||[m
+[32m+[m[32m      initialBasics.fbPageEnabled !== fbPageEnabled ||[m
+[32m+[m[32m      initialBasics.instagramEnabled !== instagramEnabled ||[m
+[32m+[m[32m      initialBasics.whatsappEnabled !== whatsappEnabled ||[m
+[32m+[m[32m      initialBasics.contactEmailEnabled !== contactEmailEnabled ||[m
+[32m+[m[32m      initialBasics.contactPhoneEnabled !== contactPhoneEnabled ||[m
+       initialBasics.ctaLabel !== ctaLabel ||[m
+       initialBasics.ctaSize !== ctaSize[m
+     );[m
+[36m@@ -437,6 +467,11 @@[m [mexport default function EditProductPage() {[m
+     setWhatsappUrl(initialBasics.whatsappUrl);[m
+     setContactEmail(initialBasics.contactEmail);[m
+     setContactPhone(initialBasics.contactPhone);[m
+[32m+[m[32m    setFbPageEnabled(initialBasics.fbPageEnabled);[m
+[32m+[m[32m    setInstagramEnabled(initialBasics.instagramEnabled);[m
+[32m+[m[32m    setWhatsappEnabled(initialBasics.whatsappEnabled);[m
+[32m+[m[32m    setContactEmailEnabled(initialBasics.contactEmailEnabled);[m
+[32m+[m[32m    setContactPhoneEnabled(initialBasics.contactPhoneEnabled);[m
+     setCtaLabel(initialBasics.ctaLabel);[m
+     setCtaSize(initialBasics.ctaSize);[m
+     // clear Add Variant form[m
+[36m@@ -501,10 +536,15 @@[m [mexport default function EditProductPage() {[m
+           whatsapp_url: whatsappUrl || null,[m
+           contact_email: contactEmail || null,[m
+           contact_phone: contactPhone || null,[m
+[32m+[m[32m          fb_page_enabled: fbPageEnabled,[m
+[32m+[m[32m          instagram_enabled: instagramEnabled,[m
+[32m+[m[32m          whatsapp_enabled: whatsappEnabled,[m
+[32m+[m[32m          contact_email_enabled: contactEmailEnabled,[m
+[32m+[m[32m          contact_phone_enabled: contactPhoneEnabled,[m
+         })[m
+         .eq('id', params.id);[m
+       if (pErr) throw pErr;[m
+[31m-      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, darazTrustLine, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage, fbPageUrl, instagramUrl, whatsappUrl, contactEmail, contactPhone, ctaLabel, ctaSize });[m
+[32m+[m[32m      setInitialBasics({ name, slug, active, descriptionEn, descriptionUr, logoUrl, darazEnabled, darazUrl, darazTrustLine, chatEnabled, chatFacebookUrl, chatInstagramUrl, specialMessage, fbPageUrl, instagramUrl, whatsappUrl, contactEmail, contactPhone, fbPageEnabled, instagramEnabled, whatsappEnabled, contactEmailEnabled, contactPhoneEnabled, ctaLabel, ctaSize });[m
+ [m
+       // 2) Add Variant (staged)[m
+       const vf = readVariantForm();[m
+[36m@@ -1415,6 +1455,110 @@[m [mexport default function EditProductPage() {[m
+         </div>[m
+       </section>[m
+ [m
+[32m+[m[32m      {/* Social & Contact */}[m
+[32m+[m[32m      <section className="space-y-4 border rounded p-4">[m
+[32m+[m[32m        <h2 className="font-medium">Social & Contact</h2>[m
+[32m+[m[32m        <div className="space-y-4 text-sm">[m
+[32m+[m[32m          <div className="space-y-1">[m
+[32m+[m[32m            <label className="block font-medium">Facebook Page</label>[m
+[32m+[m[32m            <div className="flex items-center gap-2 mb-1">[m
+[32m+[m[32m              <input[m
+[32m+[m[32m                id="soc-fb-enabled"[m
+[32m+[m[32m                type="checkbox"[m
+[32m+[m[32m                checked={fbPageEnabled}[m
+[32m+[m[32m                onChange={(e)=>setFbPageEnabled(e.target.checked)}[m
+[32m+[m[32m              />[m
+[32m+[m[32m              <label htmlFor="soc-fb-enabled">Show on LP</label>[m
+[32m+[m[32m            </div>[m
+[32m+[m[32m            <input[m
+[32m+[m[32m              value={fbPageUrl}[m
+[32m+[m[32m              onChange={(e)=>setFbPageUrl(e.target.value)}[m
+[32m+[m[32m              placeholder="https://facebook.com/yourpage"[m
+[32m+[m[32m              className="mt-1 w-full border rounded px-3 py-2"[m
+[32m+[m[32m            />[m
+[32m+[m[32m          </div>[m
+[32m+[m
+[32m+[m[32m          <div className="space-y-1">[m
+[32m+[m[32m            <label className="block font-medium">Instagram</label>[m
+[32m+[m[32m            <div className="flex items-center gap-2 mb-1">[m
+[32m+[m[32m              <input[m
+[32m+[m[32m                id="soc-ig-enabled"[m
+[32m+[m[32m                type="checkbox"[m
+[32m+[m[32m                checked={instagramEnabled}[m
+[32m+[m[32m                onChange={(e)=>setInstagramEnabled(e.target.checked)}[m
+[32m+[m[32m              />[m
+[32m+[m[32m              <label htmlFor="soc-ig-enabled">Show on LP</label>[m
+[32m+[m[32m            </div>[m
+[32m+[m[32m            <input[m
+[32m+[m[32m              value={instagramUrl}[m
+[32m+[m[32m              onChange={(e)=>setInstagramUrl(e.target.value)}[m
+[32m+[m[32m              placeholder="https://instagram.com/yourprofile"[m
+[32m+[m[32m              className="mt-1 w-full border rounded px-3 py-2"[m
+[32m+[m[32m            />[m
+[32m+[m[32m          </div>[m
+[32m+[m
+[32m+[m[32m          <div className="space-y-1">[m
+[32m+[m[32m            <label className="block font-medium">WhatsApp</label>[m
+[32m+[m[32m            <div className="flex items-center gap-2 mb-1">[m
+[32m+[m[32m              <input[m
+[32m+[m[32m                id="soc-wa-enabled"[m
+[32m+[m[32m                type="checkbox"[m
+[32m+[m[32m                checked={whatsappEnabled}[m
+[32m+[m[32m                onChange={(e)=>setWhatsappEnabled(e.target.checked)}[m
+[32m+[m[32m              />[m
+[32m+[m[32m              <label htmlFor="soc-wa-enabled">Show on LP</label>[m
+[32m+[m[32m            </div>[m
+[32m+[m[32m            <input[m
+[32m+[m[32m              value={whatsappUrl}[m
+[32m+[m[32m              onChange={(e)=>setWhatsappUrl(e.target.value)}[m
+[32m+[m[32m              placeholder="https://wa.me/923xxxxxxxxx"[m
+[32m+[m[32m              className="mt-1 w-full border rounded px-3 py-2"[m
+[32m+[m[32m            />[m
+[32m+[m[32m          </div>[m
+[32m+[m
+[32m+[m[32m          <div className="space-y-1">[m
+[32m+[m[32m            <label className="block font-medium">Support email</label>[m
+[32m+[m[32m            <div className="flex items-center gap-2 mb-1">[m
+[32m+[m[32m              <input[m
+[32m+[m[32m                id="soc-email-enabled"[m
+[32m+[m[32m                type="checkbox"[m
+[32m+[m[32m                checked={contactEmailEnabled}[m
+[32m+[m[32m                onChange={(e)=>setContactEmailEnabled(e.target.checked)}[m
+[32m+[m[32m              />[m
+[32m+[m[32m              <label htmlFor="soc-email-enabled">Show on LP</label>[m
+[32m+[m[32m            </div>[m
+[32m+[m[32m            <input[m
+[32m+[m[32m              value={contactEmail}[m
+[32m+[m[32m              onChange={(e)=>setContactEmail(e.target.value)}[m
+[32m+[m[32m              placeholder="support@example.com"[m
+[32m+[m[32m              className="mt-1 w-full border rounded px-3 py-2"[m
+[32m+[m[32m            />[m
+[32m+[m[32m          </div>[m
+[32m+[m
+[32m+[m[32m          <div className="space-y-1">[m
+[32m+[m[32m            <label className="block font-medium">Support phone</label>[m
+[32m+[m[32m            <div className="flex items-center gap-2 mb-1">[m
+[32m+[m[32m              <input[m
+[32m+[m[32m                id="soc-phone-enabled"[m
+[32m+[m[32m                type="checkbox"[m
+[32m+[m[32m                checked={contactPhoneEnabled}[m
+[32m+[m[32m                onChange={(e)=>setContactPhoneEnabled(e.target.checked)}[m
+[32m+[m[32m              />[m
+[32m+[m[32m              <label htmlFor="soc-phone-enabled">Show on LP</label>[m
+[32m+[m[32m            </div>[m
+[32m+[m[32m            <input[m
+[32m+[m[32m              value={contactPhone}[m
+[32m+[m[32m              onChange={(e)=>setContactPhone(e.target.value)}[m
+[32m+[m[32m              placeholder="03xx-xxxxxxx"[m
+[32m+[m[32m              className="mt-1 w-full border rounded px-3 py-2"[m
+[32m+[m[32m            />[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m        </div>[m
+[32m+[m[32m        <div>[m
+[32m+[m[32m          <button onClick={saveBasics} disabled={saving} className={`px-4 py-2 rounded text-white ${saving ? 'bg-gray-400' : 'bg-black hover:bg-gray-800'}`}>{saving ? 'Saving…' : 'Save'}</button>[m
+[32m+[m[32m        </div>[m
+[32m+[m[32m      </section>[m
+[32m+[m
+       {/* Danger Zone */}[m
+       <section className="space-y-3 border rounded p-4">[m
+         <h2 className="font-medium text-red-700">Danger Zone</h2>[m
+[1mdiff --git a/src/app/api/orders/create/route.ts b/src/app/api/orders/create/route.ts[m
+[1mindex abb790d..1866002 100644[m
+[1m--- a/src/app/api/orders/create/route.ts[m
+[1m+++ b/src/app/api/orders/create/route.ts[m
+[36m@@ -49,10 +49,12 @@[m [mexport async function POST(req: Request) {[m
+       return NextResponse.json({ error: 'Missing required customer fields' }, { status: 400 });[m
+     }[m
+     // Delegate atomic creation + reservation to Postgres function `place_order`[m
+[32m+[m[32m    const shippingAmount = Number((body?.shipping?.amount as any) || 0);[m
+     const { data, error } = await supabase.rpc('place_order', {[m
+       p_customer: customer,[m
+       p_items: items,[m
+       p_utm: body?.utm ?? {},[m
+[32m+[m[32m      p_shipping_amount: shippingAmount,[m
+     });[m
+     if (error) {[m
+       return NextResponse.json({ error: error.message }, { status: 400 });[m
+[1mdiff --git a/src/app/lp/[slug]/page.tsx b/src/app/lp/[slug]/page.tsx[m
+[1mindex e662749..1abe9db 100644[m
+[1m--- a/src/app/lp/[slug]/page.tsx[m
+[1m+++ b/src/app/lp/[slug]/page.tsx[m
+[36m@@ -7,6 +7,7 @@[m [mimport Image from 'next/image';[m
+ import ImageGallery, { type MediaItem } from '@/components/web/product/ImageGallery';[m
+ import UTMCapture from '@/components/web/landing/UTMCapture';[m
+ import LPViewPixel from '@/components/web/pixel/LPViewPixel';[m
+[32m+[m[32mimport SocialLinks from '@/components/web/landing/SocialLinks';[m
+ [m
+ // Render helper: if the string looks like HTML, inject as HTML. Otherwise, render paragraphs[m
+ // and preserve single line breaks. Urdu is rendered RTL with the Urdu font class.[m
+[36m@@ -69,7 +70,7 @@[m [masync function fetchLpData(slug: string) {[m
+   // 1) Product by slug[m
+   const { data: product } = await supabase[m
+     .from('products')[m
+[31m-    .select('id, name, slug, description_en, description_ur, active, logo_url, daraz_enabled, daraz_url, daraz_trust_line, chat_enabled, chat_facebook_url, chat_instagram_url, special_message, cta_label, cta_size')[m
+[32m+[m[32m    .select('id, name, slug, description_en, description_ur, active, logo_url, daraz_enabled, daraz_url, daraz_trust_line, chat_enabled, chat_facebook_url, chat_instagram_url, special_message, cta_label, cta_size, fb_page_url, instagram_url, whatsapp_url, contact_email, contact_phone, fb_page_enabled, instagram_enabled, whatsapp_enabled, contact_email_enabled, contact_phone_enabled')[m
+     .eq('slug', slug)[m
+     .eq('active', true)[m
+     .maybeSingle();[m
+[36m@@ -426,6 +427,22 @@[m [mexport default async function LandingPage({ params }: { params: { slug: string }[m
+           )}[m
+         </section>[m
+ [m
+[32m+[m[32m        {/* Social & Contact links (mobile first) */}[m
+[32m+[m[32m        <div className="block lg:hidden">[m
+[32m+[m[32m          <SocialLinks[m
+[32m+[m[32m            fbPageUrl={(product as any).fb_page_url as string | null}[m
+[32m+[m[32m            instagramUrl={(product as any).instagram_url as string | null}[m
+[32m+[m[32m            whatsappUrl={(product as any).whatsapp_url as string | null}[m
+[32m+[m[32m            contactEmail={(product as any).contact_email as string | null}[m
+[32m+[m[32m            contactPhone={(product as any).contact_phone as string | null}[m
+[32m+[m[32m            fbPageEnabled={Boolean((product as any).fb_page_enabled)}[m
+[32m+[m[32m            instagramEnabled={Boolean((product as any).instagram_enabled)}[m
+[32m+[m[32m            whatsappEnabled={Boolean((product as any).whatsapp_enabled)}[m
+[32m+[m[32m            contactEmailEnabled={Boolean((product as any).contact_email_enabled)}[m
+[32m+[m[32m            contactPhoneEnabled={Boolean((product as any).contact_phone_enabled)}[m
+[32m+[m[32m          />[m
+[32m+[m[32m        </div>[m
+[32m+[m
+         {/* Specifications (dynamic) */}[m
+         {specs && specs.length > 0 && ([m
+           <section className="space-y-6">[m
+[36m@@ -504,6 +521,18 @@[m [mexport default async function LandingPage({ params }: { params: { slug: string }[m
+             ctaSize={ctaSize as any}[m
+           />[m
+           <ReviewSummary productId={product.id} />[m
+[32m+[m[32m          <SocialLinks[m
+[32m+[m[32m            fbPageUrl={(product as any).fb_page_url as string | null}[m
+[32m+[m[32m            instagramUrl={(product as any).instagram_url as string | null}[m
+[32m+[m[32m            whatsappUrl={(product as any).whatsapp_url as string | null}[m
+[32m+[m[32m            contactEmail={(product as any).contact_email as string | null}[m
+[32m+[m[32m            contactPhone={(product as any).contact_phone as string | null}[m
+[32m+[m[32m            fbPageEnabled={Boolean((product as any).fb_page_enabled)}[m
+[32m+[m[32m            instagramEnabled={Boolean((product as any).instagram_enabled)}[m
+[32m+[m[32m            whatsappEnabled={Boolean((product as any).whatsapp_enabled)}[m
+[32m+[m[32m            contactEmailEnabled={Boolean((product as any).contact_email_enabled)}[m
+[32m+[m[32m            contactPhoneEnabled={Boolean((product as any).contact_phone_enabled)}[m
+[32m+[m[32m          />[m
+         </div>[m
+       </aside>[m
+       {/* (sentinel moved above reviews) */}[m
+[1mdiff --git a/src/components/web/landing/SocialLinks.tsx b/src/components/web/landing/SocialLinks.tsx[m
+[1mnew file mode 100644[m
+[1mindex 0000000..f711a50[m
+[1m--- /dev/null[m
+[1m+++ b/src/components/web/landing/SocialLinks.tsx[m
+[36m@@ -0,0 +1,130 @@[m
+[32m+[m[32m"use client";[m
+[32m+[m
+[32m+[m[32mimport React from "react";[m
+[32m+[m
+[32m+[m[32mexport type SocialLinksProps = {[m
+[32m+[m[32m  fbPageUrl?: string | null;[m
+[32m+[m[32m  instagramUrl?: string | null;[m
+[32m+[m[32m  whatsappUrl?: string | null;[m
+[32m+[m[32m  contactEmail?: string | null;[m
+[32m+[m[32m  contactPhone?: string | null;[m
+[32m+[m[32m  fbPageEnabled?: boolean | null;[m
+[32m+[m[32m  instagramEnabled?: boolean | null;[m
+[32m+[m[32m  whatsappEnabled?: boolean | null;[m
+[32m+[m[32m  contactEmailEnabled?: boolean | null;[m
+[32m+[m[32m  contactPhoneEnabled?: boolean | null;[m
+[32m+[m[32m};[m
+[32m+[m
+[32m+[m[32mfunction Icon({ kind }: { kind: string }) {[m
+[32m+[m[32m  const cls = "w-8 h-8";[m
+[32m+[m[32m  switch (kind) {[m
+[32m+[m[32m    case "fb":[m
+[32m+[m[32m      return ([m
+[32m+[m[32m        <svg className={cls} viewBox="0 0 24 24" aria-hidden="true">[m
+[32m+[m[32m          <circle cx="12" cy="12" r="11" fill="#1877F2" />[m
+[32m+[m[32m          <path[m
+[32m+[m[32m            fill="#ffffff"[m
+[32m+[m[32m            d="M13.5 21v-7h2.1l.4-3h-2.5V9.3c0-.9.3-1.3 1.4-1.3h1.1V5.2C15.6 5 14.8 5 13.8 5 11.5 5 10 6.3 10 8.8V11H8v3h2v7h3.5Z"[m
+[32m+[m[32m          />[m
+[32m+[m[32m        </svg>[m
+[32m+[m[32m      );[m
+[32m+[m[32m    case "ig":[m
+[32m+[m[32m      return ([m
+[32m+[m[32m        <svg className={cls} viewBox="0 0 24 24" aria-hidden="true">[m
+[32m+[m[32m          <circle cx="12" cy="12" r="11" fill="#E1306C" />[m
+[32m+[m[32m          <rect x="7" y="7" width="10" height="10" rx="3" ry="3" fill="none" stroke="#ffffff" strokeWidth="1.6" />[m
+[32m+[m[32m          <circle cx="12" cy="12" r="2.7" fill="none" stroke="#ffffff" strokeWidth="1.6" />[m
+[32m+[m[32m          <circle cx="16" cy="8" r="0.9" fill="#ffffff" />[m
+[32m+[m[32m        </svg>[m
+[32m+[m[32m      );[m
+[32m+[m[32m    case "wa":[m
+[32m+[m[32m      return ([m
+[32m+[m[32m        <svg className={cls} viewBox="0 0 24 24" aria-hidden="true">[m
+[32m+[m[32m          <circle cx="12" cy="12" r="11" fill="#25D366" />[m
+[32m+[m[32m          <path[m
+[32m+[m[32m            fill="#ffffff"[m
+[32m+[m[32m            d="M7.2 18.5 7.8 16A5.4 5.4 0 0 1 6.7 13 5.4 5.4 0 0 1 17 11.9 5.4 5.4 0 0 1 9.8 17l-2.6 1.5Z"[m
+[32m+[m[32m            opacity=".9"[m
+[32m+[m[32m          />[m
+[32m+[m[32m          <path[m
+[32m+[m[32m            fill="#25D366"[m
+[32m+[m[32m            d="M9.7 10.4c-.2-.4-.3-.4-.6-.4h-.4c-.2 0-.4.1-.5.3-.1.2-.9.9-.9 2.1 0 1.2.9 2.3 1 2.4.1.1 1.8 2.9 4.4 3.9.6.2 1 .3 1.3.4.6.2 1.2.2 1.7.1.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.2.1-1.3-.1-.1-.2-.2-.5-.4s-1.5-.8-1.7-.9c-.2-.1-.4-.1-.5.1-.1.2-.6.9-.8 1.1-.1.2-.3.2-.5.1-.2-.1-.9-.3-1.7-1.1-.6-.5-1.1-1.3-1.2-1.5-.1-.2 0-.3.1-.5.1-.1.2-.3.3-.4.1-.1.1-.2.2-.4.1-.2 0-.3 0-.4l-.7-1.3Z"[m
+[32m+[m[32m          />[m
+[32m+[m[32m        </svg>[m
+[32m+[m[32m      );[m
+[32m+[m[32m    case "mail":[m
+[32m+[m[32m      return ([m
+[32m+[m[32m        <svg className={cls} viewBox="0 0 24 24" aria-hidden="true">[m
+[32m+[m[32m          <circle cx="12" cy="12" r="11" fill="#4B5563" />[m
+[32m+[m[32m          <path d="M7 9h10v1.5L12 13 7 10.5V9Z" fill="#ffffff" />[m
+[32m+[m[32m          <path d="M7 11.5 12 14l5-2.5V15H7v-3.5Z" fill="#E5E7EB" />[m
+[32m+[m[32m        </svg>[m
+[32m+[m[32m      );[m
+[32m+[m[32m    case "phone":[m
+[32m+[m[32m    default:[m
+[32m+[m[32m      return ([m
+[32m+[m[32m        <svg className={cls} viewBox="0 0 24 24" aria-hidden="true">[m
+[32m+[m[32m          <circle cx="12" cy="12" r="11" fill="#4B5563" />[m
+[32m+[m[32m          <path[m
+[32m+[m[32m            fill="none"[m
+[32m+[m[32m            stroke="#ffffff"[m
+[32m+[m[32m            strokeWidth="1.6"[m
+[32m+[m[32m            d="M9 5h2.5L13 8.5 11 9.7A6.5 6.5 0 0 0 14.3 13l1.2-2.1L19 12.5V15a2 2 0 0 1-2 2 9 9 0 0 1-9-9 2 2 0 0 1 1-1.7Z"[m
+[32m+[m[32m          />[m
+[32m+[m[32m        </svg>[m
+[32m+[m[32m      );[m
+[32m+[m[32m  }[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mexport default function SocialLinks({[m
+[32m+[m[32m  fbPageUrl,[m
+[32m+[m[32m  instagramUrl,[m
+[32m+[m[32m  whatsappUrl,[m
+[32m+[m[32m  contactEmail,[m
+[32m+[m[32m  contactPhone,[m
+[32m+[m[32m  fbPageEnabled,[m
+[32m+[m[32m  instagramEnabled,[m
+[32m+[m[32m  whatsappEnabled,[m
+[32m+[m[32m  contactEmailEnabled,[m
+[32m+[m[32m  contactPhoneEnabled,[m
+[32m+[m[32m}: SocialLinksProps) {[m
+[32m+[m[32m  const items: Array<{ key: string; label: string; href?: string }> = [];[m
+[32m+[m
+[32m+[m[32m  if (fbPageEnabled && fbPageUrl) {[m
+[32m+[m[32m    items.push({ key: "fb", label: "Facebook", href: fbPageUrl });[m
+[32m+[m[32m  }[m
+[32m+[m[32m  if (instagramEnabled && instagramUrl) {[m
+[32m+[m[32m    items.push({ key: "ig", label: "Instagram", href: instagramUrl });[m
+[32m+[m[32m  }[m
+[32m+[m[32m  if (whatsappEnabled && whatsappUrl) {[m
+[32m+[m[32m    items.push({ key: "wa", label: "WhatsApp", href: whatsappUrl });[m
+[32m+[m[32m  }[m
+[32m+[m[32m  if (contactEmailEnabled && contactEmail) {[m
+[32m+[m[32m    items.push({ key: "mail", label: "Email", href: `mailto:${contactEmail}` });[m
+[32m+[m[32m  }[m
+[32m+[m[32m  if (contactPhoneEnabled && contactPhone) {[m
+[32m+[m[32m    items.push({ key: "phone", label: "Phone", href: `tel:${contactPhone}` });[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  if (items.length === 0) return null;[m
+[32m+[m
+[32m+[m[32m  return ([m
+[32m+[m[32m    <section className="mt-4 space-y-2">[m
+[32m+[m[32m      <h2 className="text-sm font-medium text-gray-800">Stay connected</h2>[m
+[32m+[m[32m      <div className="flex flex-wrap gap-2 text-sm">[m
+[32m+[m[32m        {items.map((it) => ([m
+[32m+[m[32m          <a[m
+[32m+[m[32m            key={it.key}[m
+[32m+[m[32m            href={it.href}[m
+[32m+[m[32m            target="_blank"[m
+[32m+[m[32m            rel="noopener noreferrer"[m
+[32m+[m[32m            className="inline-flex items-center justify-center rounded-full w-16 h-16 border border-transparent bg-white shadow-sm hover:shadow text-gray-900 hover:ring-2 hover:ring-black/10"[m
+[32m+[m[32m          >[m
+[32m+[m[32m            <Icon kind={it.key} />[m
+[32m+[m[32m            <span className="sr-only">{it.label}</span>[m
+[32m+[m[32m          </a>[m
+[32m+[m[32m        ))}[m
+[32m+[m[32m      </div>[m
+[32m+[m[32m    </section>[m
+[32m+[m[32m  );[m
+[32m+[m[32m}[m

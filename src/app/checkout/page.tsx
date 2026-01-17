@@ -8,6 +8,14 @@ import { supabaseBrowser } from "@/lib/supabaseBrowser";
 import Link from "next/link";
 import { ensurePixel, track } from "@/lib/pixel";
 import { getMetaContentId } from "@/lib/metaContentId";
+import {
+  computeEffectiveGaId,
+  ga4Event,
+  hasPurchaseFired,
+  markPurchaseFired,
+  type Ga4GlobalConfig,
+  type Ga4ProductOverride,
+} from "@/lib/ga4";
 
 type CartItem = { variant_id: string; qty: number };
 
@@ -72,11 +80,14 @@ function CheckoutInner() {
   const [shippingAmount, setShippingAmount] = useState<number | null>(null);
   const [shippingLoading, setShippingLoading] = useState<boolean>(false);
   const [promotions, setPromotions] = useState<PromotionRow[]>([]);
+  const [gaGlobal, setGaGlobal] = useState<Ga4GlobalConfig | null>(null);
+  const [gaProduct, setGaProduct] = useState<Ga4ProductOverride | null>(null);
   // Meta Pixel config (per product)
   const [pixelCfg, setPixelCfg] = useState<null | { enabled: boolean; pixel_id: string | null; content_id_source: 'sku' | 'variant_id'; events: any }>(null);
   const firedInitRef = useRef(false);
   const firedAddPaymentRef = useRef(false);
   const firedPurchaseRef = useRef(false);
+  const firedBeginCheckoutGaRef = useRef(false);
 
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -238,7 +249,7 @@ function CheckoutInner() {
         // Determine shipping settings from the first product (assumes single-product checkout for LP)
         const firstPid = productIds[0] as string | undefined;
         if (firstPid) {
-          const [{ data: settings }, { data: anyCityRule }] = await Promise.all([
+          const [{ data: settings }, { data: anyCityRule }, { data: appSettings }, { data: gaProductRow }] = await Promise.all([
             supabaseBrowser
               .from("shipping_settings")
               .select("enable_city_rates")
@@ -249,10 +260,37 @@ function CheckoutInner() {
               .select("id")
               .eq("product_id", firstPid)
               .not("city_id", "is", null)
+              .limit(1),
+            supabaseBrowser
+              .from("app_settings")
+              .select("ga4_measurement_id, ga4_enabled_default")
               .limit(1)
+              .maybeSingle(),
+            supabaseBrowser
+              .from("products")
+              .select("ga4_enabled_override, ga4_measurement_id_override")
+              .eq("id", firstPid)
+              .maybeSingle(),
           ]);
           setEnableCityRates(Boolean((settings as any)?.enable_city_rates));
           setHasCityRules(Boolean((anyCityRule || []).length));
+
+          setGaGlobal(
+            appSettings
+              ? {
+                  ga4_measurement_id: (appSettings as any).ga4_measurement_id || null,
+                  ga4_enabled_default: (appSettings as any).ga4_enabled_default ?? true,
+                }
+              : null,
+          );
+          setGaProduct(
+            gaProductRow
+              ? {
+                  ga4_enabled_override: (gaProductRow as any).ga4_enabled_override ?? null,
+                  ga4_measurement_id_override: (gaProductRow as any).ga4_measurement_id_override || null,
+                }
+              : null,
+          );
 
           // Load promotions for this product so checkout subtotal matches LP drawer
           const { data: promoRows } = await supabaseBrowser
@@ -356,6 +394,11 @@ function CheckoutInner() {
     return lines.reduce((acc, ln) => acc + ((variants[ln.variant_id]?.weight_kg || 0) * ln.qty), 0);
   }, [lines, variants]);
 
+  const effectiveGaId = useMemo(
+    () => computeEffectiveGaId(gaGlobal, gaProduct),
+    [gaGlobal, gaProduct],
+  );
+
   // Fire InitiateCheckout once when items + pixel config ready
   useEffect(() => {
     if (success) return; // do not fire after success
@@ -389,6 +432,39 @@ function CheckoutInner() {
       firedInitRef.current = true;
     }
   }, [pixelCfg, lines, variants, success]);
+
+  // GA4: begin_checkout once per checkout session
+  useEffect(() => {
+    if (success) return;
+    if (!effectiveGaId) return;
+    if (firedBeginCheckoutGaRef.current) return;
+    if (!lines.length) return;
+
+    const allPriced = lines.every((ln) => {
+      const v = variants[ln.variant_id];
+      return v && Number(v.price || 0) > 0;
+    });
+    if (!allPriced) return;
+
+    const items = lines.map((ln) => {
+      const v = variants[ln.variant_id];
+      return {
+        item_id: v?.sku || ln.variant_id,
+        item_name: undefined,
+        item_variant: [v?.color, v?.size, v?.model, v?.pack].filter(Boolean).join(' / ') || undefined,
+        quantity: ln.qty,
+        price: Number(v?.price || 0),
+      };
+    });
+
+    ga4Event(effectiveGaId, 'begin_checkout', {
+      currency: 'PKR',
+      value: Number(subtotal) || 0,
+      items,
+    });
+
+    firedBeginCheckoutGaRef.current = true;
+  }, [effectiveGaId, lines, variants, subtotal, success]);
 
   // Call shipping quote when province/city/qty changes and we have productId
   useEffect(() => {
@@ -577,6 +653,29 @@ function CheckoutInner() {
       const s = Number(subtotal) || 0;
       const ship = Number(shippingAmount || 0);
       setSuccessTotals({ subtotal: s, shipping: ship, total: s + ship });
+
+      // GA4: purchase (deduped per order_id)
+      if (effectiveGaId && data.order_id && !hasPurchaseFired(data.order_id)) {
+        const items = lines.map((ln) => {
+          const v = variants[ln.variant_id];
+          return {
+            item_id: v?.sku || ln.variant_id,
+            item_name: undefined,
+            item_variant: [v?.color, v?.size, v?.model, v?.pack].filter(Boolean).join(' / ') || undefined,
+            quantity: ln.qty,
+            price: Number(v?.price || 0),
+          };
+        });
+
+        ga4Event(effectiveGaId, 'purchase', {
+          transaction_id: String(data.order_id),
+          currency: 'PKR',
+          value: subtotal + shippingAmount,
+          items,
+        });
+
+        markPurchaseFired(data.order_id);
+      }
 
       // Fire Purchase after success (include shipping)
       if (!firedPurchaseRef.current && pixelCfg && pixelCfg.enabled && pixelCfg.pixel_id && !(pixelCfg.events && pixelCfg.events.purchase === false)) {

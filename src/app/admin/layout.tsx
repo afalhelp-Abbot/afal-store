@@ -17,6 +17,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <Link className="hover:underline" href="/admin/emails">Email list</Link>
           <Link className="hover:underline" href="/admin/reviews">Reviews</Link>
           <Link className="hover:underline" href="/admin/shipping">Shipping</Link>
+          <Link className="hover:underline" href="/admin/analytics/ga4">Analytics / GA4</Link>
           <Link className="hover:underline" href="/admin/products">Products</Link>
         </nav>
       </aside>
