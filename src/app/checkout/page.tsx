@@ -670,7 +670,7 @@ function CheckoutInner() {
         ga4Event(effectiveGaId, 'purchase', {
           transaction_id: String(data.order_id),
           currency: 'PKR',
-          value: subtotal + shippingAmount,
+          value: (Number(subtotal) || 0) + (Number(shippingAmount || 0)),
           items,
         });
 
