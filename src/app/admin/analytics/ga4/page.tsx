@@ -77,10 +77,14 @@ export default function AdminGa4SettingsPage() {
         .maybeSingle();
       if (loadErr) throw loadErr;
       if (existing) {
-        const { error: updErr } = await supabaseBrowser
-          .from("app_settings")
-          .update(payload)
-          .is("ga4_measurement_id", (existing as any).ga4_measurement_id);
+        const currentId = (existing as any).ga4_measurement_id as string | null;
+        let q = supabaseBrowser.from("app_settings").update(payload);
+        if (currentId === null || typeof currentId === "undefined") {
+          q = q.is("ga4_measurement_id", null);
+        } else {
+          q = q.eq("ga4_measurement_id", currentId);
+        }
+        const { error: updErr } = await q;
         if (updErr) throw updErr;
       } else {
         const { error: insErr } = await supabaseBrowser
