@@ -38,6 +38,9 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
   const [activeIndex, setActiveIndex] = React.useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const hasProducts = Array.isArray(products) && products.length > 0;
+  const activeCount = typeof activeProductsCount === 'number'
+    ? activeProductsCount
+    : (Array.isArray(products) ? products.length : 0);
   const activeProduct = hasProducts ? products[Math.max(0, Math.min(activeIndex, products.length - 1))] : null;
   const productCards = Array.isArray(products) ? products.slice(0, 4) : [];
   const hasSlider = Array.isArray(products) && products.length > 4;
@@ -45,10 +48,8 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
     if (typeof onAddToCart === 'function') onAddToCart();
   }, [onAddToCart]);
   const scrollOrRouteToProducts = React.useCallback(() => {
-    const count = typeof activeProductsCount === 'number' ? activeProductsCount : (Array.isArray(products) ? products.length : 0);
-
     // If exactly one active product, go straight to that LP using the most reliable slug.
-    if (count === 1) {
+    if (activeCount === 1) {
       const fallbackSlug = Array.isArray(products) && products.length === 1 ? products[0].slug : undefined;
       const targetSlug = singleProductSlug || fallbackSlug;
       if (targetSlug) {
@@ -62,7 +63,7 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  }, [activeProductsCount, singleProductSlug, products, router]);
+  }, [activeCount, singleProductSlug, products, router]);
   return (
     <div className="min-h-screen bg-gradient-to-r from-blue-100 via-blue-200 to-blue-100">
       {/* Header */}
@@ -144,7 +145,10 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
           {/* Brand story */}
           <div className="text-white space-y-8">
-            <h2 className="text-4xl sm:text-5xl font-bold text-blue-900">Afal Store — Smart Tech, Delivered Across Pakistan</h2>
+            <h2 className="text-4xl sm:text-5xl font-bold text-blue-900">Afal Store – Curated Consumer Products, Delivered Across Pakistan</h2>
+            <p className="text-base sm:text-lg text-blue-900 leading-relaxed mt-3">
+              Carefully selected everyday products, tested for quality and supported locally in Pakistan.
+            </p>
             <div className="space-y-6 max-w-2xl">
               <div className="h-px w-24 bg-gradient-to-r from-blue-600 via-blue-400 to-transparent" />
               <p className="text-lg sm:text-xl text-blue-900 leading-relaxed tracking-wide font-medium">
@@ -188,7 +192,7 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
                   </div>
                   <div>
                     <h3 className="font-semibold text-blue-900">Easy Returns</h3>
-                    <p className="text-sm text-blue-800">Clear, written return policy so there is no confusion.</p>
+                    <p className="text-sm text-blue-800">Simple return rules shown upfront so there is no confusion.</p>
                   </div>
                 </div>
               </div>
@@ -233,6 +237,9 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
                   quality={100}
                 />
               </div>
+              <p className="mt-4 text-xs sm:text-sm text-blue-700 text-center">
+                Shown: one of our featured products
+              </p>
             </div>
           </div>
         </div>
@@ -244,16 +251,26 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.1)_0%,transparent_50%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.1)_0%,transparent_50%)]" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-4xl mx-auto text-center space-y-8">
+          <div className="max-w-4xl mx-auto text-center space-y-8 rounded-3xl bg-white shadow-sm px-6 sm:px-10 py-10">
             <h2 className="text-3xl sm:text-4xl font-bold text-blue-900">Why shop with Afal Store?</h2>
             <p className="text-lg text-blue-800 leading-relaxed">
-              Reliable delivery, clear policies, and support that actually replies.
+              We focus on reliability, transparency, and products we can confidently support.
             </p>
             <p className="text-sm text-blue-700 font-urdu" dir="rtl">
-              اعتماد، آسان ریٹرنز، اور بروقت ڈلیوری — یہی ہمارا وعدہ ہے۔
+              ہم قابل اعتماد، شفاف، اور ہماری حمایت کے ساتھ مصنوعات پر توجہ دیتے ہیں۔
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mt-6 text-left">
-              <div className="space-y-3">
+              {/* Curated products is a core differentiator, so we show it in the first row */}
+              <div className="space-y-3 bg-white rounded-2xl border border-blue-100 shadow-sm px-4 py-5">
+                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                </div>
+                <h3 className="font-semibold text-blue-900">Curated Products Only</h3>
+                <p className="text-sm text-blue-700">We only list products we can support properly with parts and service.</p>
+              </div>
+              <div className="space-y-3 bg-white rounded-2xl border border-blue-100 shadow-sm px-4 py-5">
                 <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
                   <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h16" />
@@ -262,16 +279,16 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
                 <h3 className="font-semibold text-blue-900">Verified Delivery Experience</h3>
                 <p className="text-sm text-blue-700">Clear dispatch timelines and delivery updates so you know what to expect.</p>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-3 bg-white rounded-2xl border border-blue-100 shadow-sm px-4 py-5">
                 <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
                   <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h11M9 21V3m4 18l7-8-7-8" />
                   </svg>
                 </div>
                 <h3 className="font-semibold text-blue-900">Fast Dispatch</h3>
-                <p className="text-sm text-blue-700">Most orders leave our warehouse within 2438 hours after confirmation.</p>
+                <p className="text-sm text-blue-700">Most orders leave our warehouse within 24–48 hours after confirmation.</p>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-3 bg-white rounded-2xl border border-blue-100 shadow-sm px-4 py-5">
                 <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
                   <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -280,7 +297,7 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
                 <h3 className="font-semibold text-blue-900">Easy Returns Policy</h3>
                 <p className="text-sm text-blue-700">Simple return rules shown upfront so there is no confusion.</p>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-3 bg-white rounded-2xl border border-blue-100 shadow-sm px-4 py-5">
                 <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
                   <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h18M8 5v14m8-14v14M5 9h2m10 0h2M5 15h2m10 0h2" />
@@ -288,15 +305,6 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
                 </div>
                 <h3 className="font-semibold text-blue-900">Direct Support</h3>
                 <p className="text-sm text-blue-700">Talk to our team on WhatsApp or email before and after purchase.</p>
-              </div>
-              <div className="space-y-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h6" />
-                  </svg>
-                </div>
-                <h3 className="font-semibold text-blue-900">Curated Products Only</h3>
-                <p className="text-sm text-blue-700">We only list products we can support properly with parts and service.</p>
               </div>
             </div>
           </div>
@@ -318,8 +326,11 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
                 </svg>
               </div>
+              <h3 className="mb-4 text-base sm:text-lg font-semibold text-blue-800 text-center">
+                Built for confidence, not confusion
+              </h3>
               <p className="text-2xl text-blue-800 leading-loose font-urdu text-right" dir="rtl">
-                ہر آرڈر کے ساتھ ہمارا وعدہ ہے — صاف بات، تیز ڈلیوری، اور آسان واپسی۔<br />
+                ہم آپ کی ضروریات کو سمجھتے ہیں اور آپ کو بہترین مصنوعات فراہم کرتے ہیں۔<br />
                 افال اسٹور کے ساتھ آن لائن خریداری کو بنائیں بے فکر اور پُراعتماد۔
               </p>
               <div className="mt-10 pt-6 border-t border-blue-100/50">
@@ -328,7 +339,7 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2z" />
                   </svg>
                   <p className="text-sm">
-                    <span className="font-medium">Available Across Pakistan:</span> Cash on Delivery in all major cities including Karachi, Lahore, Islamabad, Rawalpindi, Peshawar, and Faisalabad
+                    <span className="font-medium">Available across Pakistan:</span> Cash on Delivery in major cities.
                   </p>
                 </div>
               </div>
@@ -344,7 +355,9 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
               <h3 className="text-2xl font-bold text-blue-900">Products</h3>
               <a href="/products" className="text-blue-700 hover:text-blue-900 text-sm font-medium">View all</a>
             </div>
-            <p className="text-sm text-blue-700 mb-6">Choose a product to see full details, photos, and order options.</p>
+            {activeCount > 1 && (
+              <p className="text-sm text-blue-700 mb-6">Explore our currently available products below.</p>
+            )}
 
             {/* If we have more than 4 total active products, render a horizontal slider using the first 4 cards */}
             {hasSlider ? (
@@ -378,7 +391,7 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
                         <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[11px] font-medium border border-blue-100">Cash on Delivery</span>
                         <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[11px] font-medium border border-blue-100">Fast Dispatch</span>
                       </div>
-                      <div className="pt-2 text-sm text-blue-600 group-hover:text-blue-800 font-medium">View details 92</div>
+                      <div className="pt-2 text-sm text-blue-600 group-hover:text-blue-800 font-medium">View details</div>
                     </div>
                   </Link>
                 ))}
@@ -414,7 +427,7 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
                         <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[11px] font-medium border border-blue-100">Cash on Delivery</span>
                         <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[11px] font-medium border border-blue-100">Fast Dispatch</span>
                       </div>
-                      <div className="pt-2 text-sm text-blue-600 group-hover:text-blue-800 font-medium">View details 92</div>
+                      <div className="pt-2 text-sm text-blue-600 group-hover:text-blue-800 font-medium">View details</div>
                     </div>
                   </Link>
                 ))}
@@ -426,6 +439,9 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
       {/* Footer / final trust strip */}
       <footer className="border-t border-blue-100 bg-white/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-4">
+          <p className="text-sm text-blue-800">
+            Afal Store is built around clear pricing, reliable delivery, and support that responds.
+          </p>
           <div className="flex flex-wrap gap-4 text-sm text-blue-800">
             <Link href="/delivery-shipping" className="hover:text-blue-900 underline-offset-2 hover:underline">Delivery &amp; Shipping</Link>
             <Link href="/return-policy" className="hover:text-blue-900 underline-offset-2 hover:underline">Returns Policy</Link>
@@ -437,10 +453,10 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
             </Link>
           </div>
           <div className="text-sm text-blue-700">
-            Cash on Delivery available 1 Fast dispatch 1 Easy returns 1 Support that responds.
+            Cash on Delivery available • 24–48h dispatch • Easy returns • Support that responds.
           </div>
           <p className="text-sm text-blue-700 font-urdu" dir="rtl">
-            کیش آن ڈیلیوری 1 تیز ڈسپیچ 1 آسان ریٹرنز 1 فوری سپورٹ
+            کیش آن ڈیلیوری دستیاب • 24–48 گھنٹے ڈسپیچ • آسان ریٹرنز • فوری سپورٹ
           </p>
         </div>
       </footer>
