@@ -491,13 +491,6 @@ export default async function LandingPage({ params }: { params: { slug: string }
           );
         })()}
 
-        {/* Secondary CTA after Key Benefits */}
-        <div className="mt-2">
-          <a href="#lp-order-card-desktop" className="inline-flex items-center justify-center rounded-md bg-black px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2">
-            {ctaLabel}
-          </a>
-        </div>
-
         {/* Bilingual Description (DB-backed, optional) */}
         <section className="space-y-6">
           {product.description_en && (
