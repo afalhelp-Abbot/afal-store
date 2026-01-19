@@ -315,36 +315,59 @@ export default async function LandingPage({ params }: { params: { slug: string }
   }
 
   const { product, mediaItems, colors, models, packages, sizes, matrix, specs, sections, colorThumbs, variants, pixel, promotions, hasColorDimension, gaGlobal, gaProduct } = data as any;
-  const contentIdSource = (pixel && pixel.content_id_source === 'variant_id') ? 'variant_id' : 'sku';
-  const variantSkuMap: Record<string, string> = Object.fromEntries(((variants||[]) as any[]).map((v:any)=>[v.id, v.sku]));
-  const ctaLabel = (product as any).cta_label || 'Buy on AFAL';
-  const ctaSize = ((product as any).cta_size as string | null) || 'medium';
-
-  // Build Product JSON-LD for SEO
+  // Build Product JSON-LD for SEO (uses existing product + variants + availability data)
   const site = 'https://afalstore.com';
   const canonical = `${site}/lp/${product.slug}`;
-  const images = mediaItems.filter((m:any)=>m.type==='image').map((m:any)=>m.src);
-  const lowest = (variants||[]).reduce((min:number, v:any)=> Math.min(min, Number(v.price||Infinity)), Infinity);
+  const images = (mediaItems || []).filter((m: any) => m.type === 'image').map((m: any) => m.src);
+  const lowest = (variants || []).reduce((min: number, v: any) => Math.min(min, Number(v.price || Infinity)), Infinity);
   const offerPrice = Number.isFinite(lowest) ? lowest : undefined;
-  const anyAvail = Object.values(matrix||{}).some((m:any)=> (m?.availability||0) > 0);
+  const anyAvail = Object.values(matrix || {}).some((m: any) => (m?.availability || 0) > 0);
   const availability = anyAvail ? 'http://schema.org/InStock' : 'http://schema.org/OutOfStock';
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: product.name,
-    description: product.description_en || undefined,
-    image: images.slice(0,4),
+    description: (product as any).description_en || undefined,
+    image: images.slice(0, 4),
     sku: (variants?.[0]?.sku) || undefined,
     brand: { '@type': 'Brand', name: 'Afal' },
-    offers: offerPrice ? {
-      '@type': 'Offer',
-      url: canonical,
-      priceCurrency: 'PKR',
-      price: Number(offerPrice.toFixed(2)),
-      availability,
-      itemCondition: 'https://schema.org/NewCondition'
-    } : undefined,
-  };
+    offers: offerPrice
+      ? {
+          '@type': 'Offer',
+          url: canonical,
+          priceCurrency: 'PKR',
+          price: Number(offerPrice.toFixed(2)),
+          availability,
+          itemCondition: 'https://schema.org/NewCondition',
+        }
+      : undefined,
+  } as const;
+
+  // Aggregate total available units across the matrix for simple "limited stock" messaging
+  const totalAvailability = Object.values(matrix || {}).reduce(
+    (sum: number, m: any) => sum + Number(m?.availability || 0),
+    0,
+  );
+  const isLimitedStock = totalAvailability > 0 && totalAvailability <= 20;
+
+  // Check if there is any currently-active, time-bounded promotion
+  const now = new Date();
+  const hasTimeLimitedPromo = (promotions || []).some((p: any) => {
+    if (!p || !p.active) return false;
+    // Only treat promos with an explicit end_at as "ending soon"
+    if (!p.end_at) return false;
+    const startOk = p.start_at ? now >= new Date(p.start_at) : true;
+    const endOk = now <= new Date(p.end_at);
+    return startOk && endOk;
+  });
+
+  // Helpers for BuyPanel and tracking
+  const contentIdSource = pixel && pixel.content_id_source === 'variant_id' ? 'variant_id' : 'sku';
+  const variantSkuMap: Record<string, string> = Object.fromEntries(
+    ((variants || []) as any[]).map((v: any) => [v.id, v.sku]),
+  );
+  const ctaLabel = (product as any).cta_label || 'Buy on AFAL';
+  const ctaSize = ((product as any).cta_size as string | null) || 'medium';
 
   return (
     <div className="max-w-6xl mx-auto p-3 sm:p-5 md:p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-3 sm:gap-6 lg:gap-8 items-start">
@@ -372,7 +395,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
         } : null}
       />
       {/* Page title spans both columns on desktop so aside aligns with gallery, not the title */}
-      <header className="space-y-0.5 lg:col-span-2 mb-1 lg:mb-2">
+      <header className="space-y-1 lg:col-span-2 mb-1 lg:mb-2">
         <div className="flex flex-row items-center text-left gap-2.5 lg:flex-row lg:items-center lg:text-left lg:gap-4">
           {product.logo_url && (
             <img
@@ -381,10 +404,14 @@ export default async function LandingPage({ params }: { params: { slug: string }
               className="h-9 lg:h-14 w-auto object-contain rounded border bg-white p-1 shadow-sm"
             />
           )}
-          <div>
+          <div className="space-y-1">
             <h1 className="text-sm sm:text-lg lg:text-2xl font-semibold max-w-[36ch] leading-tight">{product.name}</h1>
-            <p className="text-xs sm:text-sm text-gray-600 mt-0.5">Cash on Delivery · 24–48h Dispatch · Easy Returns</p>
+            <p className="text-xs sm:text-sm text-gray-700 mt-0.5 font-medium">Cash on Delivery · 24–48h Dispatch · Easy Returns</p>
+            <p className="text-[11px] sm:text-xs text-gray-500">Trusted by real buyers in Pakistan</p>
           </div>
+        </div>
+        <div className="mt-1 hidden lg:block">
+          <ReviewSummary productId={product.id} />
         </div>
       </header>
       {/* Left: Gallery + Content */}
@@ -400,7 +427,21 @@ export default async function LandingPage({ params }: { params: { slug: string }
         </section>
 
         {/* Mobile Buy panel: visible only on small screens */}
-        <div className="block lg:hidden">
+        <div className="block lg:hidden" id="lp-order-card-mobile">
+          {(hasTimeLimitedPromo || isLimitedStock) && (
+            <div className="mb-3 space-y-1">
+              {hasTimeLimitedPromo && (
+                <div className="inline-flex items-center rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 border border-red-200">
+                  Offer ends soon
+                </div>
+              )}
+              {isLimitedStock && (
+                <div className="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 border border-amber-200">
+                  Limited stock
+                </div>
+              )}
+            </div>
+          )}
           <BuyPanel
             colors={colors}
             models={models}
@@ -432,7 +473,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
             <section className="space-y-4">
               {highlightsEn.length > 0 && (
                 <div>
-                  <h2 className="text-xl font-medium mb-2">Highlights</h2>
+                  <h2 className="text-xl font-medium mb-2">Key Benefits</h2>
                   <ul className="list-disc pl-6 text-sm text-gray-700 space-y-1">
                     {highlightsEn.map((h, i) => (<li key={i}>{h}</li>))}
                   </ul>
@@ -449,7 +490,14 @@ export default async function LandingPage({ params }: { params: { slug: string }
             </section>
           );
         })()}
-        
+
+        {/* Secondary CTA after Key Benefits */}
+        <div className="mt-2">
+          <a href="#lp-order-card-desktop" className="inline-flex items-center justify-center rounded-md bg-black px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2">
+            {ctaLabel}
+          </a>
+        </div>
+
         {/* Bilingual Description (DB-backed, optional) */}
         <section className="space-y-6">
           {product.description_en && (
@@ -529,6 +577,13 @@ export default async function LandingPage({ params }: { params: { slug: string }
           </section>
         )}
 
+        {/* Secondary CTA after video / content sections */}
+        <div className="mt-4">
+          <a href="#lp-order-card-desktop" className="inline-flex items-center justify-center rounded-md bg-black px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2">
+            {ctaLabel}
+          </a>
+        </div>
+
         {/* Hide floating CTA near reviews on mobile */}
         <div id="lp-bottom-sentinel" className="h-1"></div>
         {/* Extra spacer so the floating Buy panel doesn't cover the top of reviews on mobile */}
@@ -537,14 +592,34 @@ export default async function LandingPage({ params }: { params: { slug: string }
         <div className="pt-4">
           <ReviewsSection productId={product.id} />
         </div>
+        {/* Secondary CTA after reviews */}
+        <div className="mt-4">
+          <a href="#lp-order-card-desktop" className="inline-flex items-center justify-center rounded-md bg-black px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2">
+            {ctaLabel}
+          </a>
+        </div>
         {/* Mobile-only footer spacer with small text */}
         <div className="block lg:hidden text-center text-xs text-gray-400 py-28">afalstore</div>
       </div>
 
       {/* Right: Sticky Buy panel (desktop only) */}
-      <aside className="hidden lg:block">
+      <aside className="hidden lg:block" id="lp-order-card-desktop">
         {/* Sticky Buy panel aligned with gallery top */}
-        <div className="lg:sticky lg:top-20">
+        <div className="lg:sticky lg:top-20 space-y-3">
+          {(hasTimeLimitedPromo || isLimitedStock) && (
+            <div className="space-y-1">
+              {hasTimeLimitedPromo && (
+                <div className="inline-flex items-center rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 border border-red-200">
+                  Offer ends soon
+                </div>
+              )}
+              {isLimitedStock && (
+                <div className="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 border border-amber-200">
+                  Limited stock
+                </div>
+              )}
+            </div>
+          )}
           <BuyPanel
             colors={colors}
             models={models}

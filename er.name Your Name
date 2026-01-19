@@ -1,0 +1,1024 @@
+warning: in the working copy of 'src/app/lp/[slug]/page.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/web/containers/HomeServerContainer.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/web/presenters/HomePresenter.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/components/web/presenters/ImageCarousel.tsx', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/src/app/lp/[slug]/page.tsx b/src/app/lp/[slug]/page.tsx[m
+[1mindex 49b96e1..46e6c6a 100644[m
+[1m--- a/src/app/lp/[slug]/page.tsx[m
+[1m+++ b/src/app/lp/[slug]/page.tsx[m
+[36m@@ -315,36 +315,59 @@[m [mexport default async function LandingPage({ params }: { params: { slug: string }[m
+   }[m
+ [m
+   const { product, mediaItems, colors, models, packages, sizes, matrix, specs, sections, colorThumbs, variants, pixel, promotions, hasColorDimension, gaGlobal, gaProduct } = data as any;[m
+[31m-  const contentIdSource = (pixel && pixel.content_id_source === 'variant_id') ? 'variant_id' : 'sku';[m
+[31m-  const variantSkuMap: Record<string, string> = Object.fromEntries(((variants||[]) as any[]).map((v:any)=>[v.id, v.sku]));[m
+[31m-  const ctaLabel = (product as any).cta_label || 'Buy on AFAL';[m
+[31m-  const ctaSize = ((product as any).cta_size as string | null) || 'medium';[m
+[31m-[m
+[31m-  // Build Product JSON-LD for SEO[m
+[32m+[m[32m  // Build Product JSON-LD for SEO (uses existing product + variants + availability data)[m
+   const site = 'https://afalstore.com';[m
+   const canonical = `${site}/lp/${product.slug}`;[m
+[31m-  const images = mediaItems.filter((m:any)=>m.type==='image').map((m:any)=>m.src);[m
+[31m-  const lowest = (variants||[]).reduce((min:number, v:any)=> Math.min(min, Number(v.price||Infinity)), Infinity);[m
+[32m+[m[32m  const images = (mediaItems || []).filter((m: any) => m.type === 'image').map((m: any) => m.src);[m
+[32m+[m[32m  const lowest = (variants || []).reduce((min: number, v: any) => Math.min(min, Number(v.price || Infinity)), Infinity);[m
+   const offerPrice = Number.isFinite(lowest) ? lowest : undefined;[m
+[31m-  const anyAvail = Object.values(matrix||{}).some((m:any)=> (m?.availability||0) > 0);[m
+[32m+[m[32m  const anyAvail = Object.values(matrix || {}).some((m: any) => (m?.availability || 0) > 0);[m
+   const availability = anyAvail ? 'http://schema.org/InStock' : 'http://schema.org/OutOfStock';[m
+   const jsonLd = {[m
+     '@context': 'https://schema.org',[m
+     '@type': 'Product',[m
+     name: product.name,[m
+[31m-    description: product.description_en || undefined,[m
+[31m-    image: images.slice(0,4),[m
+[32m+[m[32m    description: (product as any).description_en || undefined,[m
+[32m+[m[32m    image: images.slice(0, 4),[m
+     sku: (variants?.[0]?.sku) || undefined,[m
+     brand: { '@type': 'Brand', name: 'Afal' },[m
+[31m-    offers: offerPrice ? {[m
+[31m-      '@type': 'Offer',[m
+[31m-      url: canonical,[m
+[31m-      priceCurrency: 'PKR',[m
+[31m-      price: Number(offerPrice.toFixed(2)),[m
+[31m-      availability,[m
+[31m-      itemCondition: 'https://schema.org/NewCondition'[m
+[31m-    } : undefined,[m
+[31m-  };[m
+[32m+[m[32m    offers: offerPrice[m
+[32m+[m[32m      ? {[m
+[32m+[m[32m          '@type': 'Offer',[m
+[32m+[m[32m          url: canonical,[m
+[32m+[m[32m          priceCurrency: 'PKR',[m
+[32m+[m[32m          price: Number(offerPrice.toFixed(2)),[m
+[32m+[m[32m          availability,[m
+[32m+[m[32m          itemCondition: 'https://schema.org/NewCondition',[m
+[32m+[m[32m        }[m
+[32m+[m[32m      : undefined,[m
+[32m+[m[32m  } as const;[m
+[32m+[m
+[32m+[m[32m  // Aggregate total available units across the matrix for simple "limited stock" messaging[m
+[32m+[m[32m  const totalAvailability = Object.values(matrix || {}).reduce([m
+[32m+[m[32m    (sum: number, m: any) => sum + Number(m?.availability || 0),[m
+[32m+[m[32m    0,[m
+[32m+[m[32m  );[m
+[32m+[m[32m  const isLimitedStock = totalAvailability > 0 && totalAvailability <= 20;[m
+[32m+[m
+[32m+[m[32m  // Check if there is any currently-active, time-bounded promotion[m
+[32m+[m[32m  const now = new Date();[m
+[32m+[m[32m  const hasTimeLimitedPromo = (promotions || []).some((p: any) => {[m
+[32m+[m[32m    if (!p || !p.active) return false;[m
+[32m+[m[32m    // Only treat promos with an explicit end_at as "ending soon"[m
+[32m+[m[32m    if (!p.end_at) return false;[m
+[32m+[m[32m    const startOk = p.start_at ? now >= new Date(p.start_at) : true;[m
+[32m+[m[32m    const endOk = now <= new Date(p.end_at);[m
+[32m+[m[32m    return startOk && endOk;[m
+[32m+[m[32m  });[m
+[32m+[m
+[32m+[m[32m  // Helpers for BuyPanel and tracking[m
+[32m+[m[32m  const contentIdSource = pixel && pixel.content_id_source === 'variant_id' ? 'variant_id' : 'sku';[m
+[32m+[m[32m  const variantSkuMap: Record<string, string> = Object.fromEntries([m
+[32m+[m[32m    ((variants || []) as any[]).map((v: any) => [v.id, v.sku]),[m
+[32m+[m[32m  );[m
+[32m+[m[32m  const ctaLabel = (product as any).cta_label || 'Buy on AFAL';[m
+[32m+[m[32m  const ctaSize = ((product as any).cta_size as string | null) || 'medium';[m
+ [m
+   return ([m
+     <div className="max-w-6xl mx-auto p-3 sm:p-5 md:p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-3 sm:gap-6 lg:gap-8 items-start">[m
+[36m@@ -372,7 +395,7 @@[m [mexport default async function LandingPage({ params }: { params: { slug: string }[m
+         } : null}[m
+       />[m
+       {/* Page title spans both columns on desktop so aside aligns with gallery, not the title */}[m
+[31m-      <header className="space-y-0.5 lg:col-span-2 mb-1 lg:mb-2">[m
+[32m+[m[32m      <header className="space-y-1 lg:col-span-2 mb-1 lg:mb-2">[m
+         <div className="flex flex-row items-center text-left gap-2.5 lg:flex-row lg:items-center lg:text-left lg:gap-4">[m
+           {product.logo_url && ([m
+             <img[m
+[36m@@ -381,11 +404,15 @@[m [mexport default async function LandingPage({ params }: { params: { slug: string }[m
+               className="h-9 lg:h-14 w-auto object-contain rounded border bg-white p-1 shadow-sm"[m
+             />[m
+           )}[m
+[31m-          <div>[m
+[32m+[m[32m          <div className="space-y-1">[m
+             <h1 className="text-sm sm:text-lg lg:text-2xl font-semibold max-w-[36ch] leading-tight">{product.name}</h1>[m
+[31m-            <p className="text-xs sm:text-sm text-gray-600 mt-0.5">Cash on Delivery · 24–48h Dispatch · Easy Returns</p>[m
+[32m+[m[32m            <p className="text-xs sm:text-sm text-gray-700 mt-0.5 font-medium">Cash on Delivery · 24–48h Dispatch · Easy Returns</p>[m
+[32m+[m[32m            <p className="text-[11px] sm:text-xs text-gray-500">Trusted by real buyers in Pakistan</p>[m
+           </div>[m
+         </div>[m
+[32m+[m[32m        <div className="mt-1 hidden lg:block">[m
+[32m+[m[32m          <ReviewSummary productId={product.id} />[m
+[32m+[m[32m        </div>[m
+       </header>[m
+       {/* Left: Gallery + Content */}[m
+       <div className="space-y-4 lg:space-y-8">[m
+[36m@@ -400,7 +427,21 @@[m [mexport default async function LandingPage({ params }: { params: { slug: string }[m
+         </section>[m
+ [m
+         {/* Mobile Buy panel: visible only on small screens */}[m
+[31m-        <div className="block lg:hidden">[m
+[32m+[m[32m        <div className="block lg:hidden" id="lp-order-card-mobile">[m
+[32m+[m[32m          {(hasTimeLimitedPromo || isLimitedStock) && ([m
+[32m+[m[32m            <div className="mb-3 space-y-1">[m
+[32m+[m[32m              {hasTimeLimitedPromo && ([m
+[32m+[m[32m                <div className="inline-flex items-center rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 border border-red-200">[m
+[32m+[m[32m                  Offer ends soon[m
+[32m+[m[32m                </div>[m
+[32m+[m[32m              )}[m
+[32m+[m[32m              {isLimitedStock && ([m
+[32m+[m[32m                <div className="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 border border-amber-200">[m
+[32m+[m[32m                  Limited stock[m
+[32m+[m[32m                </div>[m
+[32m+[m[32m              )}[m
+[32m+[m[32m            </div>[m
+[32m+[m[32m          )}[m
+           <BuyPanel[m
+             colors={colors}[m
+             models={models}[m
+[36m@@ -432,7 +473,7 @@[m [mexport default async function LandingPage({ params }: { params: { slug: string }[m
+             <section className="space-y-4">[m
+               {highlightsEn.length > 0 && ([m
+                 <div>[m
+[31m-                  <h2 className="text-xl font-medium mb-2">Highlights</h2>[m
+[32m+[m[32m                  <h2 className="text-xl font-medium mb-2">Key Benefits</h2>[m
+                   <ul className="list-disc pl-6 text-sm text-gray-700 space-y-1">[m
+                     {highlightsEn.map((h, i) => (<li key={i}>{h}</li>))}[m
+                   </ul>[m
+[36m@@ -449,7 +490,14 @@[m [mexport default async function LandingPage({ params }: { params: { slug: string }[m
+             </section>[m
+           );[m
+         })()}[m
+[31m-        [m
+[32m+[m
+[32m+[m[32m        {/* Secondary CTA after Key Benefits */}[m
+[32m+[m[32m        <div className="mt-2">[m
+[32m+[m[32m          <a href="#lp-order-card-desktop" className="inline-flex items-center justify-center rounded-md bg-black px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2">[m
+[32m+[m[32m            {ctaLabel}[m
+[32m+[m[32m          </a>[m
+[32m+[m[32m        </div>[m
+[32m+[m
+         {/* Bilingual Description (DB-backed, optional) */}[m
+         <section className="space-y-6">[m
+           {product.description_en && ([m
+[36m@@ -529,6 +577,13 @@[m [mexport default async function LandingPage({ params }: { params: { slug: string }[m
+           </section>[m
+         )}[m
+ [m
+[32m+[m[32m        {/* Secondary CTA after video / content sections */}[m
+[32m+[m[32m        <div className="mt-4">[m
+[32m+[m[32m          <a href="#lp-order-card-desktop" className="inline-flex items-center justify-center rounded-md bg-black px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2">[m
+[32m+[m[32m            {ctaLabel}[m
+[32m+[m[32m          </a>[m
+[32m+[m[32m        </div>[m
+[32m+[m
+         {/* Hide floating CTA near reviews on mobile */}[m
+         <div id="lp-bottom-sentinel" className="h-1"></div>[m
+         {/* Extra spacer so the floating Buy panel doesn't cover the top of reviews on mobile */}[m
+[36m@@ -537,14 +592,34 @@[m [mexport default async function LandingPage({ params }: { params: { slug: string }[m
+         <div className="pt-4">[m
+           <ReviewsSection productId={product.id} />[m
+         </div>[m
+[32m+[m[32m        {/* Secondary CTA after reviews */}[m
+[32m+[m[32m        <div className="mt-4">[m
+[32m+[m[32m          <a href="#lp-order-card-desktop" className="inline-flex items-center justify-center rounded-md bg-black px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2">[m
+[32m+[m[32m            {ctaLabel}[m
+[32m+[m[32m          </a>[m
+[32m+[m[32m        </div>[m
+         {/* Mobile-only footer spacer with small text */}[m
+         <div className="block lg:hidden text-center text-xs text-gray-400 py-28">afalstore</div>[m
+       </div>[m
+ [m
+       {/* Right: Sticky Buy panel (desktop only) */}[m
+[31m-      <aside className="hidden lg:block">[m
+[32m+[m[32m      <aside className="hidden lg:block" id="lp-order-card-desktop">[m
+         {/* Sticky Buy panel aligned with gallery top */}[m
+[31m-        <div className="lg:sticky lg:top-20">[m
+[32m+[m[32m        <div className="lg:sticky lg:top-20 space-y-3">[m
+[32m+[m[32m          {(hasTimeLimitedPromo || isLimitedStock) && ([m
+[32m+[m[32m            <div className="space-y-1">[m
+[32m+[m[32m              {hasTimeLimitedPromo && ([m
+[32m+[m[32m                <div className="inline-flex items-center rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 border border-red-200">[m
+[32m+[m[32m                  Offer ends soon[m
+[32m+[m[32m                </div>[m
+[32m+[m[32m              )}[m
+[32m+[m[32m              {isLimitedStock && ([m
+[32m+[m[32m                <div className="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 border border-amber-200">[m
+[32m+[m[32m                  Limited stock[m
+[32m+[m[32m                </div>[m
+[32m+[m[32m              )}[m
+[32m+[m[32m            </div>[m
+[32m+[m[32m          )}[m
+           <BuyPanel[m
+             colors={colors}[m
+             models={models}[m
+[1mdiff --git a/src/app/products/page.tsx b/src/app/products/page.tsx[m
+[1mindex a279396..fc3d677 100644[m
+[1m--- a/src/app/products/page.tsx[m
+[1m+++ b/src/app/products/page.tsx[m
+[36m@@ -1,5 +1,6 @@[m
+ import { getSupabaseServerClient } from '@/lib/supabaseServer';[m
+ import Link from 'next/link';[m
+[32m+[m[32mimport { redirect } from 'next/navigation';[m
+ [m
+ export const dynamic = 'force-dynamic';[m
+ [m
+[36m@@ -40,6 +41,12 @@[m [mexport default async function ProductsIndexPage() {[m
+     cards.push({ id: pid, name, slug, fromPrice, image });[m
+   }[m
+ [m
+[32m+[m[32m  // If there is only one active product, route directly to its LP instead of showing a listing.[m
+[32m+[m[32m  if (cards.length === 1) {[m
+[32m+[m[32m    const only = cards[0];[m
+[32m+[m[32m    redirect(`/lp/${only.slug}`);[m
+[32m+[m[32m  }[m
+[32m+[m
+   return ([m
+     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">[m
+       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">[m
+[1mdiff --git a/src/components/web/containers/HomeServerContainer.tsx b/src/components/web/containers/HomeServerContainer.tsx[m
+[1mindex ce3c3d6..6cba126 100644[m
+[1m--- a/src/components/web/containers/HomeServerContainer.tsx[m
+[1m+++ b/src/components/web/containers/HomeServerContainer.tsx[m
+[36m@@ -7,7 +7,7 @@[m [mexport default async function HomeServerContainer() {[m
+   // Featured/primary product for hero (fallback to first active product)[m
+   const { data: primary } = await supabase[m
+     .from('products')[m
+[31m-    .select('id, slug')[m
+[32m+[m[32m    .select('id, slug, logo_url, fb_page_url, contact_email')[m
+     .eq('active', true)[m
+     .order('created_at', { ascending: false })[m
+     .limit(1)[m
+[36m@@ -16,6 +16,9 @@[m [mexport default async function HomeServerContainer() {[m
+   let startingPrice: number | null = null;[m
+   let colorPrices: Record<string, number> = {};[m
+   let colorAvailability: Record<string, number> = {};[m
+[32m+[m[32m  const primaryLogoUrl = (primary as any)?.logo_url as string | null | undefined;[m
+[32m+[m[32m  const primaryFbPageUrl = (primary as any)?.fb_page_url as string | null | undefined;[m
+[32m+[m[32m  const primaryContactEmail = (primary as any)?.contact_email as string | null | undefined;[m
+ [m
+   if (primary?.id) {[m
+     const { data: variants } = await supabase[m
+[36m@@ -61,11 +64,13 @@[m [mexport default async function HomeServerContainer() {[m
+     }[m
+   }[m
+ [m
+[31m-  // Build products list for grid (scalable)[m
+[32m+[m[32m  // Build products list for grid (scalable).[m
+[32m+[m[32m  // Prefer explicit featured_rank ordering when available, otherwise newest first.[m
+   const { data: products } = await supabase[m
+     .from('products')[m
+[31m-    .select('id, name, slug')[m
+[32m+[m[32m    .select('id, name, slug, featured_rank, created_at')[m
+     .eq('active', true)[m
+[32m+[m[32m    .order('featured_rank', { ascending: true, nullsFirst: false })[m
+     .order('created_at', { ascending: false });[m
+ [m
+   let productCards: { id: string; name: string; slug: string; fromPrice: number | null; image: string | null }[] = [];[m
+[36m@@ -92,12 +97,20 @@[m [mexport default async function HomeServerContainer() {[m
+     productCards.push({ id: pid, name, slug, fromPrice, image });[m
+   }[m
+ [m
+[32m+[m[32m  const activeProductsCount = productCards.length;[m
+[32m+[m[32m  const singleProductSlug = activeProductsCount === 1 ? productCards[0]?.slug ?? null : null;[m
+[32m+[m
+   return ([m
+     <HomePresenter[m
+       startingPrice={startingPrice}[m
+       colorPrices={colorPrices}[m
+       colorAvailability={colorAvailability}[m
+       products={productCards}[m
+[32m+[m[32m      logoUrl={primaryLogoUrl ?? null}[m
+[32m+[m[32m      contactEmail={primaryContactEmail ?? null}[m
+[32m+[m[32m      fbPageUrl={primaryFbPageUrl ?? null}[m
+[32m+[m[32m      activeProductsCount={activeProductsCount}[m
+[32m+[m[32m      singleProductSlug={singleProductSlug}[m
+     />[m
+   );[m
+ }[m
+[1mdiff --git a/src/components/web/landing/BuyPanel.tsx b/src/components/web/landing/BuyPanel.tsx[m
+[1mindex 459b9de..9ff4bde 100644[m
+[1m--- a/src/components/web/landing/BuyPanel.tsx[m
+[1m+++ b/src/components/web/landing/BuyPanel.tsx[m
+[36m@@ -402,12 +402,22 @@[m [mexport default function BuyPanel({ colors, models, packages, sizes, matrix, colo[m
+       </div>[m
+ [m
+       {/* Trust row */}[m
+[31m-      <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-600">[m
+[31m-        <span className="inline-flex items-center gap-1"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 12H4"/><path d="M14 6l6 6-6 6"/></svg> Cash on Delivery</span>[m
+[31m-        <span className="inline-flex items-center gap-1"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21V7a2 2 0 0 0-2-2h-3l-2-2H8L6 5H5a2 2 0 0 0-2 2v14z"/></svg> 24–48h Dispatch</span>[m
+[31m-        <button type="button" onClick={()=>{ setShowReturns(true); try { track('ClickReturnsInfo'); } catch {} }} className="inline-flex items-center gap-1 hover:underline">[m
+[31m-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l3 3"/></svg>[m
+[31m-          Easy Returns[m
+[32m+[m[32m      <div className="flex flex-wrap items-center gap-4 text-sm sm:text-base text-gray-700 mt-1">[m
+[32m+[m[32m        <span className="inline-flex items-center gap-2">[m
+[32m+[m[32m          <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 12H4"/><path d="M14 6l6 6-6 6"/></svg>[m
+[32m+[m[32m          <span className="font-semibold">Cash on Delivery</span>[m
+[32m+[m[32m        </span>[m
+[32m+[m[32m        <span className="inline-flex items-center gap-2">[m
+[32m+[m[32m          <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21V7a2 2 0 0 0-2-2h-3l-2-2H8L6 5H5a2 2 0 0 0-2 2v14z"/></svg>[m
+[32m+[m[32m          <span className="font-semibold">24–48h Dispatch</span>[m
+[32m+[m[32m        </span>[m
+[32m+[m[32m        <button[m
+[32m+[m[32m          type="button"[m
+[32m+[m[32m          onClick={()=>{ setShowReturns(true); try { track('ClickReturnsInfo'); } catch {} }}[m
+[32m+[m[32m          className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-4 py-1.5 hover:bg-gray-200 hover:underline text-sm sm:text-base shadow-sm"[m
+[32m+[m[32m        >[m
+[32m+[m[32m          <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l3 3"/></svg>[m
+[32m+[m[32m          <span className="font-semibold whitespace-nowrap">Easy Returns – click to read return policy</span>[m
+         </button>[m
+         {darazTrustLine && darazUrl && ([m
+           <a[m
+[36m@@ -415,9 +425,9 @@[m [mexport default function BuyPanel({ colors, models, packages, sizes, matrix, colo[m
+             target="_blank"[m
+             rel="noopener"[m
+             onClick={()=>{ try { track('ClickDarazTrust'); } catch {} }}[m
+[31m-            className="inline-flex items-center gap-1 hover:underline"[m
+[32m+[m[32m            className="inline-flex items-center gap-1.5 hover:underline"[m
+           >[m
+[31m-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12l2-2 4 4 8-8 2 2-10 10-6-6z"/></svg>[m
+[32m+[m[32m            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12l2-2 4 4 8-8 2 2-10 10-6-6z"/></svg>[m
+             Same seller on Daraz[m
+           </a>[m
+         )}[m
+[1mdiff --git a/src/components/web/presenters/HomePresenter.tsx b/src/components/web/presenters/HomePresenter.tsx[m
+[1mindex 13a1ded..bf46ead 100644[m
+[1m--- a/src/components/web/presenters/HomePresenter.tsx[m
+[1m+++ b/src/components/web/presenters/HomePresenter.tsx[m
+[36m@@ -1,8 +1,9 @@[m
+ 'use client';[m
+ [m
+ import React from 'react';[m
+[31m-import Image from 'next/image';[m
+ import Link from 'next/link';[m
+[32m+[m[32mimport Image from 'next/image';[m
+[32m+[m[32mimport { useRouter } from 'next/navigation';[m
+ import ImageCarousel from './ImageCarousel';[m
+ [m
+ type HomePresenterProps = {[m
+[36m@@ -11,6 +12,11 @@[m [mtype HomePresenterProps = {[m
+   colorPrices?: Record<string, number>;[m
+   colorAvailability?: Record<string, number>;[m
+   products?: { id: string; name: string; slug: string; fromPrice: number | null; image: string | null }[];[m
+[32m+[m[32m  logoUrl?: string | null;[m
+[32m+[m[32m  contactEmail?: string | null;[m
+[32m+[m[32m  fbPageUrl?: string | null;[m
+[32m+[m[32m  activeProductsCount?: number;[m
+[32m+[m[32m  singleProductSlug?: string | null;[m
+ };[m
+ [m
+ type ColorOption = {[m
+[36m@@ -19,7 +25,8 @@[m [mtype ColorOption = {[m
+   tailwindClass: string;[m
+ };[m
+ [m
+[31m-export default function HomePresenter({ onAddToCart, startingPrice, colorPrices, colorAvailability, products }: HomePresenterProps) {[m
+[32m+[m[32mexport default function HomePresenter({ onAddToCart, startingPrice, colorPrices, colorAvailability, products, logoUrl, contactEmail, fbPageUrl, activeProductsCount, singleProductSlug }: HomePresenterProps) {[m
+[32m+[m[32m  const router = useRouter();[m
+   const tealName = React.useMemo(() => (colorPrices && 'Teal' in (colorPrices ?? {}) && !('Teel' in (colorPrices ?? {})) ? 'Teal' : 'Teel'), [colorPrices]);[m
+   const colorOptions: ColorOption[] = React.useMemo(() => ([[m
+     { name: 'Black', value: '#000000', tailwindClass: 'bg-black' },[m
+[36m@@ -29,91 +36,174 @@[m [mexport default function HomePresenter({ onAddToCart, startingPrice, colorPrices,[m
+   ]), [tealName]);[m
+   const [selectedColor, setSelectedColor] = React.useState<ColorOption>(colorOptions[0]);[m
+   const [activeIndex, setActiveIndex] = React.useState(0);[m
+[32m+[m[32m  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);[m
+   const hasProducts = Array.isArray(products) && products.length > 0;[m
+   const activeProduct = hasProducts ? products[Math.max(0, Math.min(activeIndex, products.length - 1))] : null;[m
+[32m+[m[32m  const productCards = Array.isArray(products) ? products.slice(0, 4) : [];[m
+[32m+[m[32m  const hasSlider = Array.isArray(products) && products.length > 4;[m
+   const handleAdd = React.useCallback(() => {[m
+     if (typeof onAddToCart === 'function') onAddToCart();[m
+   }, [onAddToCart]);[m
+[32m+[m[32m  const scrollOrRouteToProducts = React.useCallback(() => {[m
+[32m+[m[32m    const count = typeof activeProductsCount === 'number' ? activeProductsCount : (Array.isArray(products) ? products.length : 0);[m
+[32m+[m
+[32m+[m[32m    // If exactly one active product, go straight to that LP using the most reliable slug.[m
+[32m+[m[32m    if (count === 1) {[m
+[32m+[m[32m      const fallbackSlug = Array.isArray(products) && products.length === 1 ? products[0].slug : undefined;[m
+[32m+[m[32m      const targetSlug = singleProductSlug || fallbackSlug;[m
+[32m+[m[32m      if (targetSlug) {[m
+[32m+[m[32m        router.push(`/lp/${targetSlug}`);[m
+[32m+[m[32m        return;[m
+[32m+[m[32m      }[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    if (typeof document === 'undefined') return;[m
+[32m+[m[32m    const el = document.getElementById('home-products');[m
+[32m+[m[32m    if (el) {[m
+[32m+[m[32m      el.scrollIntoView({ behavior: 'smooth', block: 'start' });[m
+[32m+[m[32m    }[m
+[32m+[m[32m  }, [activeProductsCount, singleProductSlug, products, router]);[m
+   return ([m
+     <div className="min-h-screen bg-gradient-to-r from-blue-100 via-blue-200 to-blue-100">[m
+       {/* Header */}[m
+       <header className="bg-white/95 backdrop-blur-sm shadow-sm sticky top-0 z-50">[m
+         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">[m
+           <div className="flex items-center justify-between">[m
+[31m-            <div className="flex items-center space-x-4">[m
+[31m-              <h1 className="text-3xl font-bold text-blue-600">Afal Store</h1>[m
+[31m-              <span className="text-blue-700 tracking-wide uppercase text-sm font-medium">Ultimate Shopping Store</span>[m
+[32m+[m[32m            <div className="flex items-center space-x-3 sm:space-x-4">[m
+[32m+[m[32m              <div className="flex items-center gap-2">[m
+[32m+[m[32m                {logoUrl ? ([m
+[32m+[m[32m                  // eslint-disable-next-line @next/next/no-img-element[m
+[32m+[m[32m                  <img[m
+[32m+[m[32m                    src={logoUrl}[m
+[32m+[m[32m                    alt="Afal Store logo"[m
+[32m+[m[32m                    className="h-8 w-8 sm:h-10 sm:w-10 rounded-md object-contain border border-blue-100 bg-white"[m
+[32m+[m[32m                  />[m
+[32m+[m[32m                ) : null}[m
+[32m+[m[32m                <h1 className="text-2xl sm:text-3xl font-bold text-blue-600">Afal Store</h1>[m
+[32m+[m[32m              </div>[m
+[32m+[m[32m              <span className="text-blue-700 tracking-wide uppercase text-xs sm:text-sm font-medium">Ultimate Shopping Store</span>[m
+             </div>[m
+[31m-            <nav className="flex items-center space-x-8">[m
+[31m-              <Link href="/products" className="text-blue-700 hover:text-blue-800 font-medium transition-colors">Products</Link>[m
+[31m-              <Link href="/track-order" className="text-blue-700 hover:text-blue-800 font-medium transition-colors">Track Order</Link>[m
+[31m-              <button className="text-blue-700 hover:text-blue-800 relative group">[m
+[31m-                <svg className="w-6 h-6 transform group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">[m
+[31m-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />[m
+[32m+[m[32m            <nav className="flex items-center space-x-2 sm:space-x-4">[m
+[32m+[m[32m              {/* Desktop nav */}[m
+[32m+[m[32m              <div className="hidden sm:flex items-center space-x-8">[m
+[32m+[m[32m                <Link href="/products" className="text-blue-700 hover:text-blue-800 font-medium transition-colors">Products</Link>[m
+[32m+[m[32m                <button className="text-blue-700 hover:text-blue-800 relative group">[m
+[32m+[m[32m                  <svg className="w-6 h-6 transform group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">[m
+[32m+[m[32m                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />[m
+[32m+[m[32m                  </svg>[m
+[32m+[m[32m                </button>[m
+[32m+[m[32m              </div>[m
+[32m+[m[32m              {/* Mobile hamburger */}[m
+[32m+[m[32m              <button[m
+[32m+[m[32m                type="button"[m
+[32m+[m[32m                className="sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100"[m
+[32m+[m[32m                onClick={() => setMobileMenuOpen((open) => !open)}[m
+[32m+[m[32m                aria-label="Toggle navigation menu"[m
+[32m+[m[32m              >[m
+[32m+[m[32m                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">[m
+[32m+[m[32m                  <path d="M4 7h16" />[m
+[32m+[m[32m                  <path d="M4 12h16" />[m
+[32m+[m[32m                  <path d="M4 17h16" />[m
+                 </svg>[m
+               </button>[m
+             </nav>[m
+           </div>[m
+         </div>[m
+[32m+[m[32m        {/* Mobile nav menu */}[m
+[32m+[m[32m        {mobileMenuOpen && ([m
+[32m+[m[32m          <div className="sm:hidden border-t border-blue-100 bg-white/95">[m
+[32m+[m[32m            <div className="max-w-7xl mx-auto px-4 py-2 space-y-1">[m
+[32m+[m[32m              <Link[m
+[32m+[m[32m                href="/products"[m
+[32m+[m[32m                className="block px-2 py-2 text-sm font-medium text-blue-800 hover:bg-blue-50 rounded-md"[m
+[32m+[m[32m                onClick={() => setMobileMenuOpen(false)}[m
+[32m+[m[32m              >[m
+[32m+[m[32m                Products[m
+[32m+[m[32m              </Link>[m
+[32m+[m[32m              <Link[m
+[32m+[m[32m                href="/return-policy"[m
+[32m+[m[32m                className="block px-2 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 rounded-md"[m
+[32m+[m[32m                onClick={() => setMobileMenuOpen(false)}[m
+[32m+[m[32m              >[m
+[32m+[m[32m                Returns Policy[m
+[32m+[m[32m              </Link>[m
+[32m+[m[32m              <Link[m
+[32m+[m[32m                href={contactEmail ? `mailto:${contactEmail}` : (fbPageUrl || '#')}[m
+[32m+[m[32m                className="block px-2 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 rounded-md"[m
+[32m+[m[32m                onClick={() => setMobileMenuOpen(false)}[m
+[32m+[m[32m              >[m
+[32m+[m[32m                Contact / Support[m
+[32m+[m[32m              </Link>[m
+[32m+[m[32m            </div>[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m        )}[m
+       </header>[m
+ [m
+[31m-      {/* Hero Section */}[m
+[32m+[m[32m      {/* Hero Section (brand-level) */}[m
+       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">[m
+         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">[m
+[32m+[m[32m          {/* Brand story */}[m
+           <div className="text-white space-y-8">[m
+[31m-            <h2 className="text-4xl sm:text-5xl font-bold text-blue-900">{activeProduct?.name || 'Android Tag'}</h2>[m
+[31m-            <div className="space-y-8 max-w-2xl">[m
+[32m+[m[32m            <h2 className="text-4xl sm:text-5xl font-bold text-blue-900">Afal Store — Smart Tech, Delivered Across Pakistan</h2>[m
+[32m+[m[32m            <div className="space-y-6 max-w-2xl">[m
+               <div className="h-px w-24 bg-gradient-to-r from-blue-600 via-blue-400 to-transparent" />[m
+[31m-              <div className="relative pl-6">[m
+[31m-                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-600 via-blue-400 to-transparent rounded-full" />[m
+[31m-                <p className="text-xl text-blue-900 leading-relaxed tracking-wide font-medium">[m
+[31m-                  Never lose what matters, for your world is never misplaced — always within reach, closer than you think, because every detail matters… now you have Android Tag.[m
+[31m-                </p>[m
+[31m-              </div>[m
+[31m-              <div className="relative pr-6 mt-8">[m
+[31m-                <div className="absolute right-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-600 via-blue-400 to-transparent rounded-full" />[m
+[31m-                <p className="text-xl text-blue-900 leading-relaxed font-urdu text-right tracking-wider font-medium" dir="rtl">[m
+[31m-                  جو کھوئے نہیں، وہی اپنے ہیں؛ آپ کا ہر قیمتی لمحہ ہمیشہ آپ کے پاس، محفوظ، ہمیشہ قریب — یادیں نہیں کھوتیں، کیونکہ ہر جزو اہم ہے… اب آپ کے پاس ہے Android Tag۔[m
+[31m-                </p>[m
+[31m-              </div>[m
+[31m-            </div>[m
+[31m-            <div className="space-y-8">[m
+[31m-              <div className="space-y-4">[m
+[31m-                <p className="text-sm font-medium text-blue-700">Select Color:</p>[m
+[31m-                <div className="flex items-center gap-3">[m
+[31m-                  {colorOptions.map((color) => ([m
+[31m-                    <button[m
+[31m-                      key={color.name}[m
+[31m-                      onClick={() => setSelectedColor(color)}[m
+[31m-                      className={`w-10 h-10 rounded-full ${color.tailwindClass} transition-all ${selectedColor.name === color.name ? 'scale-110 ring-2 ring-blue-600 ring-offset-2' : 'hover:scale-105 hover:shadow'} shadow-sm`}[m
+[31m-                      title={color.name}[m
+[31m-                      aria-label={`Select ${color.name} color`}[m
+[31m-                    />[m
+[31m-                  ))}[m
+[32m+[m[32m              <p className="text-lg sm:text-xl text-blue-900 leading-relaxed tracking-wide font-medium">[m
+[32m+[m[32m                Cash on Delivery • 24–48h Dispatch • Easy Returns — buy with confidence.[m
+[32m+[m[32m              </p>[m
+[32m+[m[32m              <p className="text-sm sm:text-base text-blue-900 leading-relaxed font-urdu" dir="rtl">[m
+[32m+[m[32m                پاکستان بھر میں کیش آن ڈیلیوری • 24–48 گھنٹے ڈسپیچ • آسان ریٹرنز[m
+[32m+[m[32m              </p>[m
+[32m+[m[32m              <p className="text-base text-blue-800 leading-relaxed">[m
+[32m+[m[32m                We source practical, everyday devices and ship them directly from our team – clear pricing, fast dispatch, and[m
+[32m+[m[32m                real support after delivery.[m
+[32m+[m[32m              </p>[m
+[32m+[m[32m              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">[m
+[32m+[m[32m                <div className="flex items-start gap-3">[m
+[32m+[m[32m                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">[m
+[32m+[m[32m                    <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">[m
+[32m+[m[32m                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />[m
+[32m+[m[32m                    </svg>[m
+[32m+[m[32m                  </div>[m
+[32m+[m[32m                  <div>[m
+[32m+[m[32m                    <h3 className="font-semibold text-blue-900">Cash on Delivery</h3>[m
+[32m+[m[32m                    <p className="text-sm text-blue-800">Pay at your doorstep in major cities across Pakistan.</p>[m
+[32m+[m[32m                  </div>[m
+[32m+[m[32m                </div>[m
+[32m+[m[32m                <div className="flex items-start gap-3">[m
+[32m+[m[32m                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">[m
+[32m+[m[32m                    <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">[m
+[32m+[m[32m                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h11M9 21V3m4 18l7-8-7-8" />[m
+[32m+[m[32m                    </svg>[m
+[32m+[m[32m                  </div>[m
+[32m+[m[32m                  <div>[m
+[32m+[m[32m                    <h3 className="font-semibold text-blue-900">24–48h Dispatch</h3>[m
+[32m+[m[32m                    <p className="text-sm text-blue-800">Orders leave our warehouse quickly so you get devices sooner.</p>[m
+[32m+[m[32m                  </div>[m
+[32m+[m[32m                </div>[m
+[32m+[m[32m                <div className="flex items-start gap-3">[m
+[32m+[m[32m                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">[m
+[32m+[m[32m                    <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">[m
+[32m+[m[32m                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v16h16V4H4zm4 6h8m-8 4h5" />[m
+[32m+[m[32m                    </svg>[m
+[32m+[m[32m                  </div>[m
+[32m+[m[32m                  <div>[m
+[32m+[m[32m                    <h3 className="font-semibold text-blue-900">Easy Returns</h3>[m
+[32m+[m[32m                    <p className="text-sm text-blue-800">Clear, written return policy so there is no confusion.</p>[m
+[32m+[m[32m                  </div>[m
+                 </div>[m
+[31m-                <div className="text-sm text-blue-800">Selected: <span className="font-semibold">{selectedColor.name}</span></div>[m
+[31m-              </div>[m
+[31m-              [m
+[31m-              <div className="flex items-center flex-wrap gap-4">[m
+[31m-                <span className="text-3xl font-bold text-blue-900">[m
+[31m-                  {activeProduct?.fromPrice != null ? `PKR ${Number(activeProduct.fromPrice).toLocaleString()}` : 'PKR —'}[m
+[31m-                </span>[m
+[31m-                <span className="text-sm text-blue-800">[m
+[31m-                  {(() => {[m
+[31m-                    const avail = colorAvailability?.[selectedColor.name];[m
+[31m-                    if (avail == null) return '';[m
+[31m-                    return avail > 0 ? `${avail} available` : 'Out of stock';[m
+[31m-                  })()}[m
+[31m-                </span>[m
+[31m-                <Link[m
+[31m-                  href={activeProduct ? `/lp/${activeProduct.slug}` : '/products'}[m
+[31m-                  className="font-medium px-8 py-3 rounded-lg transition-all text-white bg-blue-600 hover:bg-blue-700"[m
+[31m-                >[m
+[31m-                  View product[m
+[31m-                </Link>[m
+               </div>[m
+             </div>[m
+[32m+[m[32m            <div className="flex flex-wrap items-center gap-4 pt-4">[m
+[32m+[m[32m              <Link[m
+[32m+[m[32m                href="/products"[m
+[32m+[m[32m                className="inline-flex items-center justify-center font-medium px-8 py-3 rounded-lg transition-all text-white bg-blue-600 hover:bg-blue-700 shadow-sm"[m
+[32m+[m[32m              >[m
+[32m+[m[32m                Explore Products[m
+[32m+[m[32m              </Link>[m
+[32m+[m[32m            </div>[m
+           </div>[m
+[32m+[m
+[32m+[m[32m          {/* Visual side – generic brand visual (no product-specific copy) */}[m
+           <div className="relative flex items-center justify-center bg-gradient-to-r from-blue-100/50 via-blue-200/50 to-blue-100/50 rounded-3xl overflow-hidden p-8">[m
+             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.7)_0%,transparent_70%)]" />[m
+             [m
+[36m@@ -131,39 +221,11 @@[m [mexport default function HomePresenter({ onAddToCart, startingPrice, colorPrices,[m
+             </div>[m
+ [m
+             <div className="relative w-full max-w-4xl mx-auto px-4 py-8">[m
+[31m-              <div className="absolute inset-y-1/2 -left-1 translate-y-[-50%] hidden sm:flex">[m
+[31m-                {hasProducts && products.length > 1 && ([m
+[31m-                  <button[m
+[31m-                    type="button"[m
+[31m-                    onClick={() => setActiveIndex((idx) => (idx - 1 + products.length) % products.length)}[m
+[31m-                    className="w-9 h-9 rounded-full bg-white/80 shadow flex items-center justify-center hover:bg-white text-blue-700"[m
+[31m-                    aria-label="Previous product"[m
+[31m-                  >[m
+[31m-                    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">[m
+[31m-                      <path d="M12.5 4L7.5 10L12.5 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />[m
+[31m-                    </svg>[m
+[31m-                  </button>[m
+[31m-                )}[m
+[31m-              </div>[m
+[31m-              <div className="absolute inset-y-1/2 -right-1 translate-y-[-50%] hidden sm:flex">[m
+[31m-                {hasProducts && products.length > 1 && ([m
+[31m-                  <button[m
+[31m-                    type="button"[m
+[31m-                    onClick={() => setActiveIndex((idx) => (idx + 1) % products.length)}[m
+[31m-                    className="w-9 h-9 rounded-full bg-white/80 shadow flex items-center justify-center hover:bg-white text-blue-700"[m
+[31m-                    aria-label="Next product"[m
+[31m-                  >[m
+[31m-                    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">[m
+[31m-                      <path d="M7.5 4L12.5 10L7.5 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />[m
+[31m-                    </svg>[m
+[31m-                  </button>[m
+[31m-                )}[m
+[31m-              </div>[m
+               <div className="relative w-full max-w-2xl mx-auto bg-blend-screen">[m
+                 <div className="absolute inset-0 bg-gradient-to-t from-blue-600/10 to-transparent" />[m
+                 <Image[m
+[31m-                  src={(activeProduct?.image as string) || '/images/2c6e7458128b076e82bd99f52ab130c8.avif'}[m
+[31m-                  alt={activeProduct?.name || 'Android Tag Product'}[m
+[32m+[m[32m                  src="/images/2c6e7458128b076e82bd99f52ab130c8.avif"[m
+[32m+[m[32m                  alt="Afal Store smart devices"[m
+                   width={800}[m
+                   height={600}[m
+                   className="w-full h-auto select-none mix-blend-multiply brightness-110"[m
+[36m@@ -176,146 +238,66 @@[m [mexport default function HomePresenter({ onAddToCart, startingPrice, colorPrices,[m
+         </div>[m
+       </div>[m
+ [m
+[31m-      {/* Product Description */}[m
+[32m+[m[32m      {/* Why Afal Store (generic trust section) */}[m
+       <div className="relative py-24 overflow-hidden">[m
+[31m-        {/* Background Elements */}[m
+         <div className="absolute inset-0 bg-gradient-to-b from-blue-100/50 to-white/50" />[m
+         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.1)_0%,transparent_50%)]" />[m
+         <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.1)_0%,transparent_50%)]" />[m
+[31m-        [m
+[31m-        {/* Curved Divider Top */}[m
+[31m-        <div className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-blue-100 to-transparent" />[m
+[31m-        <div className="absolute top-0 left-0 right-0 overflow-hidden">[m
+[31m-          <svg className="relative block w-full h-8 text-blue-100" viewBox="0 0 1200 80" preserveAspectRatio="none">[m
+[31m-            <path d="M321.39,56.44c58-10.79,114.16-30.13,172-41.86,82.39-16.72,168.19-17.73,250.45-.39C823.78,31,906.67,72,985.66,92.83c70.05,18.48,146.53,26.09,214.34,3V0H0V27.35A600.21,600.21,0,0,0,321.39,56.44Z" fill="currentColor" />[m
+[31m-          </svg>[m
+[31m-        </div>[m
+         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">[m
+[31m-          <div className="relative max-w-3xl mx-auto text-center space-y-8">[m
+[31m-            <h2 className="text-3xl sm:text-4xl font-bold text-blue-900">Never Lose What Matters</h2>[m
+[31m-            <p className="text-xl text-blue-800 leading-relaxed">[m
+[31m-              Introducing the Android Tag with Google Find My Device - your smart companion for keeping track of valuable items. [m
+[31m-              Ultra-slim, waterproof, and powered by official Google integration.[m
+[32m+[m[32m          <div className="max-w-4xl mx-auto text-center space-y-8">[m
+[32m+[m[32m            <h2 className="text-3xl sm:text-4xl font-bold text-blue-900">Why shop with Afal Store?</h2>[m
+[32m+[m[32m            <p className="text-lg text-blue-800 leading-relaxed">[m
+[32m+[m[32m              Reliable delivery, clear policies, and support that actually replies.[m
+             </p>[m
+[31m-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 mt-16 text-left">[m
+[31m-              <div className="absolute -left-48 -top-48 w-96 h-96 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob" />[m
+[31m-              <div className="absolute -right-48 -bottom-48 w-96 h-96 bg-blue-300 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000" />[m
+[31m-              <div className="space-y-4">[m
+[31m-                <div className="flex items-start gap-3">[m
+[31m-                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">[m
+[31m-                    <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">[m
+[31m-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />[m
+[31m-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />[m
+[31m-                    </svg>[m
+[31m-                  </div>[m
+[31m-                  <div>[m
+[31m-                    <h3 className="font-semibold text-blue-900">Real-Time Tracking</h3>[m
+[31m-                    <p className="text-blue-700">Locate your items instantly with Google's trusted location services</p>[m
+[31m-                  </div>[m
+[31m-                </div>[m
+[31m-                <div className="flex items-start gap-3">[m
+[31m-                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">[m
+[31m-                    <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">[m
+[31m-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />[m
+[31m-                    </svg>[m
+[31m-                  </div>[m
+[31m-                  <div>[m
+[31m-                    <h3 className="font-semibold text-blue-900">Year-Long Battery</h3>[m
+[31m-                    <p className="text-blue-700">12-month battery life with low power alerts</p>[m
+[31m-                  </div>[m
+[32m+[m[32m            <p className="text-sm text-blue-700 font-urdu" dir="rtl">[m
+[32m+[m[32m              اعتماد، آسان ریٹرنز، اور بروقت ڈلیوری — یہی ہمارا وعدہ ہے۔[m
+[32m+[m[32m            </p>[m
+[32m+[m[32m            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mt-6 text-left">[m
+[32m+[m[32m              <div className="space-y-3">[m
+[32m+[m[32m                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">[m
+[32m+[m[32m                  <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">[m
+[32m+[m[32m                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h16" />[m
+[32m+[m[32m                  </svg>[m
+                 </div>[m
+[32m+[m[32m                <h3 className="font-semibold text-blue-900">Verified Delivery Experience</h3>[m
+[32m+[m[32m                <p className="text-sm text-blue-700">Clear dispatch timelines and delivery updates so you know what to expect.</p>[m
+               </div>[m
+[31m-              <div className="space-y-4">[m
+[31m-                <div className="flex items-start gap-3">[m
+[31m-                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">[m
+[31m-                    <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">[m
+[31m-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />[m
+[31m-                    </svg>[m
+[31m-                  </div>[m
+[31m-                  <div>[m
+[31m-                    <h3 className="font-semibold text-blue-900">IP68 Waterproof</h3>[m
+[31m-                    <p className="text-blue-700">Fully protected against water and dust</p>[m
+[31m-                  </div>[m
+[31m-                </div>[m
+[31m-                <div className="flex items-start gap-3">[m
+[31m-                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">[m
+[31m-                    <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">[m
+[31m-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />[m
+[31m-                    </svg>[m
+[31m-                  </div>[m
+[31m-                  <div>[m
+[31m-                    <h3 className="font-semibold text-blue-900">Two-Way Finding</h3>[m
+[31m-                    <p className="text-blue-700">Find your phone or tag with two-way alerts</p>[m
+[31m-                  </div>[m
+[32m+[m[32m              <div className="space-y-3">[m
+[32m+[m[32m                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">[m
+[32m+[m[32m                  <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">[m
+[32m+[m[32m                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h11M9 21V3m4 18l7-8-7-8" />[m
+[32m+[m[32m                  </svg>[m
+                 </div>[m
+[32m+[m[32m                <h3 className="font-semibold text-blue-900">Fast Dispatch</h3>[m
+[32m+[m[32m                <p className="text-sm text-blue-700">Most orders leave our warehouse within 2438 hours after confirmation.</p>[m
+               </div>[m
+[31m-            </div>[m
+[31m-          </div>[m
+[31m-        </div>[m
+[31m-      </div>[m
+[31m-[m
+[31m-      {/* Features */}[m
+[31m-      <div className="relative py-20 bg-gradient-to-r from-blue-200 via-blue-300 to-blue-200 overflow-hidden">[m
+[31m-        {/* Wave Pattern */}[m
+[31m-        <div className="absolute top-0 left-0 right-0 h-24 opacity-20">[m
+[31m-          <svg className="w-full h-full" viewBox="0 0 1200 120" preserveAspectRatio="none">[m
+[31m-            <path d="M0,0V46.29c47.79,22.2,103.59,32.17,158,28,70.36-5.37,136.33-33.31,206.8-37.5C438.64,32.43,512.34,53.67,583,72.05c69.27,18,138.3,24.88,209.4,13.08,36.15-6,69.85-17.84,104.45-29.34C989.49,25,1113-14.29,1200,52.47V0Z" fill="currentColor" className="text-white/10" />[m
+[31m-            <path d="M0,0V15.81C13,36.92,27.64,56.86,47.69,72.05,99.41,111.27,165,111,224.58,91.58c31.15-10.15,60.09-26.07,89.67-39.8,40.92-19,84.73-46,130.83-49.67,36.26-2.85,70.9,9.42,98.6,31.56,31.77,25.39,62.32,62,103.63,73,40.44,10.79,81.35-6.69,119.13-24.28s75.16-39,116.92-43.05c59.73-5.85,113.28,22.88,168.9,38.84,30.2,8.66,59,6.17,87.09-7.5,22.43-10.89,48-26.93,60.65-49.24V0Z" fill="currentColor" className="text-white/5" />[m
+[31m-          </svg>[m
+[31m-        </div>[m
+[31m-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">[m
+[31m-          <h3 className="text-3xl sm:text-4xl font-bold text-center mb-8 text-blue-800">Product Features</h3>[m
+[31m-          <div className="flex flex-nowrap overflow-x-auto gap-6 max-w-5xl mx-auto pb-4 px-2 pr-8 snap-x snap-mandatory -mx-2 scrollbar-blue">[m
+[31m-            <div className="flex-none w-[280px] snap-start">[m
+[31m-              <div className="mb-4">[m
+[31m-                <ImageCarousel [m
+[31m-                  images={[[m
+[31m-                    { src: '/images/2c6e7458128b076e82bd99f52ab130c8.avif', alt: 'Find My Device Front' },[m
+[31m-                    { src: '/images/94caacfb5a2c869439a89646703d75bb.avif', alt: 'Find My Device App' },[m
+[31m-                  ]}[m
+[31m-                />[m
+[31m-              </div>[m
+[31m-              <h4 className="text-lg font-bold mb-2 text-blue-800">Find My Device</h4>[m
+[31m-              <p className="text-sm text-blue-700">Official Google integration</p>[m
+[31m-            </div>[m
+[31m-[m
+[31m-            <div className="flex-none w-[280px] snap-start">[m
+[31m-              <div className="mb-4">[m
+[31m-                <ImageCarousel [m
+[31m-                  images={[[m
+[31m-                    { src: '/images/3c03271147d6f8062d3cdbea740aee99.avif', alt: 'Battery Life Front' },[m
+[31m-                    { src: '/images/8f2cf7b23a638f499313f6fbf6bd4087.avif', alt: 'Battery Life Detail' },[m
+[31m-                  ]}[m
+[31m-                />[m
+[32m+[m[32m              <div className="space-y-3">[m
+[32m+[m[32m                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">[m
+[32m+[m[32m                  <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">[m
+[32m+[m[32m                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />[m
+[32m+[m[32m                  </svg>[m
+[32m+[m[32m                </div>[m
+[32m+[m[32m                <h3 className="font-semibold text-blue-900">Easy Returns Policy</h3>[m
+[32m+[m[32m                <p className="text-sm text-blue-700">Simple return rules shown upfront so there is no confusion.</p>[m
+               </div>[m
+[31m-              <h4 className="text-lg font-bold mb-2 text-blue-800">Long Battery</h4>[m
+[31m-              <p className="text-sm text-blue-700">12 months battery life</p>[m
+[31m-            </div>[m
+[31m-[m
+[31m-            <div className="flex-none w-[280px] snap-start">[m
+[31m-              <div className="mb-4">[m
+[31m-                <ImageCarousel [m
+[31m-                  images={[[m
+[31m-                    { src: '/images/8227e60d14e5f9f681bd580a6671b3c5.avif', alt: 'Waterproof Front' },[m
+[31m-                    { src: '/images/cad05795ed848d2c89cb4b7b53970f4c.avif', alt: 'Waterproof Detail' },[m
+[31m-                  ]}[m
+[31m-                />[m
+[32m+[m[32m              <div className="space-y-3">[m
+[32m+[m[32m                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">[m
+[32m+[m[32m                  <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">[m
+[32m+[m[32m                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h18M8 5v14m8-14v14M5 9h2m10 0h2M5 15h2m10 0h2" />[m
+[32m+[m[32m                  </svg>[m
+[32m+[m[32m                </div>[m
+[32m+[m[32m                <h3 className="font-semibold text-blue-900">Direct Support</h3>[m
+[32m+[m[32m                <p className="text-sm text-blue-700">Talk to our team on WhatsApp or email before and after purchase.</p>[m
+               </div>[m
+[31m-              <h4 className="text-lg font-bold mb-2 text-blue-800">Waterproof</h4>[m
+[31m-              <p className="text-sm text-blue-700">IP68 water resistant</p>[m
+[31m-            </div>[m
+[31m-[m
+[31m-            <div className="flex-none w-[280px] snap-start">[m
+[31m-              <div className="mb-4">[m
+[31m-                <ImageCarousel [m
+[31m-                  images={[[m
+[31m-                    { src: '/images/d3d9555482ccfc3130698b9400c07518.avif', alt: 'Compact Front' },[m
+[31m-                    { src: '/images/ab848a78a9c626e6cb937806b8c8fbfd.avif', alt: 'Compact Detail' },[m
+[31m-                  ]}[m
+[31m-                />[m
+[32m+[m[32m              <div className="space-y-3">[m
+[32m+[m[32m                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">[m
+[32m+[m[32m                  <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">[m
+[32m+[m[32m                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h6" />[m
+[32m+[m[32m                  </svg>[m
+[32m+[m[32m                </div>[m
+[32m+[m[32m                <h3 className="font-semibold text-blue-900">Curated Products Only</h3>[m
+[32m+[m[32m                <p className="text-sm text-blue-700">We only list products we can support properly with parts and service.</p>[m
+               </div>[m
+[31m-              <h4 className="text-lg font-bold mb-2 text-blue-800">Compact</h4>[m
+[31m-              <p className="text-sm text-blue-700">Ultra-slim design</p>[m
+             </div>[m
+           </div>[m
+         </div>[m
+[36m@@ -337,12 +319,8 @@[m [mexport default function HomePresenter({ onAddToCart, startingPrice, colorPrices,[m
+                 </svg>[m
+               </div>[m
+               <p className="text-2xl text-blue-800 leading-loose font-urdu text-right" dir="rtl">[m
+[31m-                چابی گم ہوئی، تو دل گھبرایا،<br />[m
+[31m-                پرس گیا کہاں، کسی نے نہ پایا۔<br />[m
+[31m-                محبت کے تحفے بھی اکثر کھو جاتے،<br />[m
+[31m-                چھوٹی چھوٹی چیزیں بڑی یادیں بناتے۔<br />[m
+[31m-                اب ٹینشن نہیں، نہ کوئی جھنجھٹ باقی،<br />[m
+[31m-                کیونکہ ساتھ ہے Android Tag کا جادو باقی۔[m
+[32m+[m[32m                ہر آرڈر کے ساتھ ہمارا وعدہ ہے — صاف بات، تیز ڈلیوری، اور آسان واپسی۔<br />[m
+[32m+[m[32m                افال اسٹور کے ساتھ آن لائن خریداری کو بنائیں بے فکر اور پُراعتماد۔[m
+               </p>[m
+               <div className="mt-10 pt-6 border-t border-blue-100/50">[m
+                 <div className="flex items-center gap-3 text-blue-700">[m
+[36m@@ -358,36 +336,114 @@[m [mexport default function HomePresenter({ onAddToCart, startingPrice, colorPrices,[m
+           </div>[m
+         </div>[m
+       </div>[m
+[31m-      {/* Products Grid (scalable) */}[m
+[31m-      {Array.isArray(products) && products.length > 0 && ([m
+[31m-        <div className="py-16 bg-white/50">[m
+[32m+[m[32m      {/* Products Grid / Slider (admin-driven, up to 4 items) */}[m
+[32m+[m[32m      {productCards.length > 0 && ([m
+[32m+[m[32m        <div id="home-products" className="py-16 bg-white/50">[m
+           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">[m
+[31m-            <div className="flex items-center justify-between mb-6">[m
+[32m+[m[32m            <div className="flex items-center justify-between mb-2">[m
+               <h3 className="text-2xl font-bold text-blue-900">Products</h3>[m
+               <a href="/products" className="text-blue-700 hover:text-blue-900 text-sm font-medium">View all</a>[m
+             </div>[m
+[31m-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">[m
+[31m-              {products.map((p) => ([m
+[31m-                <Link key={p.id} href={`/lp/${p.slug}`} className="group rounded-xl border border-blue-100 bg-white hover:shadow-md transition-shadow overflow-hidden">[m
+[31m-                  <div className="aspect-[4/3] w-full bg-blue-50 grid place-items-center overflow-hidden">[m
+[31m-                    {p.image ? ([m
+[31m-                      // eslint-disable-next-line @next/next/no-img-element[m
+[31m-                      <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform" />[m
+[31m-                    ) : ([m
+[31m-                      <div className="text-blue-300 text-sm">Image coming soon</div>[m
+[31m-                    )}[m
+[31m-                  </div>[m
+[31m-                  <div className="p-4 space-y-1">[m
+[31m-                    <div className="font-medium text-blue-900 truncate">{p.name}</div>[m
+[31m-                    <div className="text-sm text-blue-700">{p.fromPrice != null ? `From PKR ${Number(p.fromPrice).toLocaleString()}` : 'Price coming soon'}</div>[m
+[31m-                    <div className="pt-2 text-sm text-blue-600 group-hover:text-blue-800 font-medium">View product →</div>[m
+[31m-                  </div>[m
+[31m-                </Link>[m
+[31m-              ))}[m
+[31m-            </div>[m
+[32m+[m[32m            <p className="text-sm text-blue-700 mb-6">Choose a product to see full details, photos, and order options.</p>[m
+[32m+[m
+[32m+[m[32m            {/* If we have more than 4 total active products, render a horizontal slider using the first 4 cards */}[m
+[32m+[m[32m            {hasSlider ? ([m
+[32m+[m[32m              <div className="flex flex-nowrap overflow-x-auto gap-6 pb-4 -mx-2 px-2 scrollbar-blue snap-x snap-mandatory">[m
+[32m+[m[32m                {productCards.map((p) => ([m
+[32m+[m[32m                  <Link[m
+[32m+[m[32m                    key={p.id}[m
+[32m+[m[32m                    href={`/lp/${p.slug}`}[m
+[32m+[m[32m                    className="flex-none w-[260px] sm:w-[280px] snap-start group rounded-xl border border-blue-100 bg-white hover:shadow-md transition-shadow overflow-hidden"[m
+[32m+[m[32m                  >[m
+[32m+[m[32m                    <div className="aspect-[4/3] w-full bg-blue-50 grid place-items-center overflow-hidden">[m
+[32m+[m[32m                      {p.image ? ([m
+[32m+[m[32m                        // eslint-disable-next-line @next/next/no-img-element[m
+[32m+[m[32m                        <img[m
+[32m+[m[32m                          src={p.image}[m
+[32m+[m[32m                          alt={p.name}[m
+[32m+[m[32m                          className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform"[m
+[32m+[m[32m                        />[m
+[32m+[m[32m                      ) : ([m
+[32m+[m[32m                        <div className="text-blue-300 text-sm">Image coming soon</div>[m
+[32m+[m[32m                      )}[m
+[32m+[m[32m                    </div>[m
+[32m+[m[32m                    <div className="p-4 space-y-1">[m
+[32m+[m[32m                      <div className="font-medium text-blue-900 truncate">{p.name}</div>[m
+[32m+[m[32m                      <div className="text-sm text-blue-700">[m
+[32m+[m[32m                        {p.fromPrice != null[m
+[32m+[m[32m                          ? `From PKR ${Number(p.fromPrice).toLocaleString()}`[m
+[32m+[m[32m                          : 'Price coming soon'}[m
+[32m+[m[32m                      </div>[m
+[32m+[m[32m                      <div className="flex flex-wrap gap-2 pt-1">[m
+[32m+[m[32m                        <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[11px] font-medium border border-blue-100">Cash on Delivery</span>[m
+[32m+[m[32m                        <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[11px] font-medium border border-blue-100">Fast Dispatch</span>[m
+[32m+[m[32m                      </div>[m
+[32m+[m[32m                      <div className="pt-2 text-sm text-blue-600 group-hover:text-blue-800 font-medium">View details 92</div>[m
+[32m+[m[32m                    </div>[m
+[32m+[m[32m                  </Link>[m
+[32m+[m[32m                ))}[m
+[32m+[m[32m              </div>[m
+[32m+[m[32m            ) : ([m
+[32m+[m[32m              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">[m
+[32m+[m[32m                {productCards.map((p) => ([m
+[32m+[m[32m                  <Link[m
+[32m+[m[32m                    key={p.id}[m
+[32m+[m[32m                    href={`/lp/${p.slug}`}[m
+[32m+[m[32m                    className="group rounded-xl border border-blue-100 bg-white hover:shadow-md transition-shadow overflow-hidden"[m
+[32m+[m[32m                  >[m
+[32m+[m[32m                    <div className="aspect-[4/3] w-full bg-blue-50 grid place-items-center overflow-hidden">[m
+[32m+[m[32m                      {p.image ? ([m
+[32m+[m[32m                        // eslint-disable-next-line @next/next/no-img-element[m
+[32m+[m[32m                        <img[m
+[32m+[m[32m                          src={p.image}[m
+[32m+[m[32m                          alt={p.name}[m
+[32m+[m[32m                          className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform"[m
+[32m+[m[32m                        />[m
+[32m+[m[32m                      ) : ([m
+[32m+[m[32m                        <div className="text-blue-300 text-sm">Image coming soon</div>[m
+[32m+[m[32m                      )}[m
+[32m+[m[32m                    </div>[m
+[32m+[m[32m                    <div className="p-4 space-y-1">[m
+[32m+[m[32m                      <div className="font-medium text-blue-900 truncate">{p.name}</div>[m
+[32m+[m[32m                      <div className="text-sm text-blue-700">[m
+[32m+[m[32m                        {p.fromPrice != null[m
+[32m+[m[32m                          ? `From PKR ${Number(p.fromPrice).toLocaleString()}`[m
+[32m+[m[32m                          : 'Price coming soon'}[m
+[32m+[m[32m                      </div>[m
+[32m+[m[32m                      <div className="flex flex-wrap gap-2 pt-1">[m
+[32m+[m[32m                        <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[11px] font-medium border border-blue-100">Cash on Delivery</span>[m
+[32m+[m[32m                        <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[11px] font-medium border border-blue-100">Fast Dispatch</span>[m
+[32m+[m[32m                      </div>[m
+[32m+[m[32m                      <div className="pt-2 text-sm text-blue-600 group-hover:text-blue-800 font-medium">View details 92</div>[m
+[32m+[m[32m                    </div>[m
+[32m+[m[32m                  </Link>[m
+[32m+[m[32m                ))}[m
+[32m+[m[32m              </div>[m
+[32m+[m[32m            )}[m
+           </div>[m
+         </div>[m
+       )}[m
+[32m+[m[32m      {/* Footer / final trust strip */}[m
+[32m+[m[32m      <footer className="border-t border-blue-100 bg-white/80">[m
+[32m+[m[32m        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-4">[m
+[32m+[m[32m          <div className="flex flex-wrap gap-4 text-sm text-blue-800">[m
+[32m+[m[32m            <Link href="/delivery-shipping" className="hover:text-blue-900 underline-offset-2 hover:underline">Delivery &amp; Shipping</Link>[m
+[32m+[m[32m            <Link href="/return-policy" className="hover:text-blue-900 underline-offset-2 hover:underline">Returns Policy</Link>[m
+[32m+[m[32m            <Link[m
+[32m+[m[32m              href={contactEmail ? `mailto:${contactEmail}` : (fbPageUrl || '#')}[m
+[32m+[m[32m              className="hover:text-blue-900 underline-offset-2 hover:underline"[m
+[32m+[m[32m            >[m
+[32m+[m[32m              Contact / Support[m
+[32m+[m[32m            </Link>[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m          <div className="text-sm text-blue-700">[m
+[32m+[m[32m            Cash on Delivery available 1 Fast dispatch 1 Easy returns 1 Support that responds.[m
+[32m+[m[32m          </div>[m
+[32m+[m[32m          <p className="text-sm text-blue-700 font-urdu" dir="rtl">[m
+[32m+[m[32m            کیش آن ڈیلیوری 1 تیز ڈسپیچ 1 آسان ریٹرنز 1 فوری سپورٹ[m
+[32m+[m[32m          </p>[m
+[32m+[m[32m        </div>[m
+[32m+[m[32m      </footer>[m
+     </div>[m
+   );[m
+ }[m
+[1mdiff --git a/src/components/web/presenters/ImageCarousel.tsx b/src/components/web/presenters/ImageCarousel.tsx[m
+[1mindex d7c112c..f796432 100644[m
+[1m--- a/src/components/web/presenters/ImageCarousel.tsx[m
+[1m+++ b/src/components/web/presenters/ImageCarousel.tsx[m
+[36m@@ -66,7 +66,7 @@[m [mexport default function ImageCarousel({ images, interval = 5000 }: ImageCarousel[m
+       {/* Navigation Arrows */}[m
+       <button[m
+         onClick={prevSlide}[m
+[31m-        className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-white opacity-0 group-hover:opacity-75 hover:opacity-100 hover:bg-white/20 transition-all duration-300"[m
+[32m+[m[32m        className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-white/70 text-black opacity-90 hover:opacity-100 hover:bg-white transition-all duration-300 shadow-sm"[m
+         aria-label="Previous slide"[m
+       >[m
+         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">[m
+[36m@@ -75,7 +75,7 @@[m [mexport default function ImageCarousel({ images, interval = 5000 }: ImageCarousel[m
+       </button>[m
+       <button[m
+         onClick={nextSlide}[m
+[31m-        className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-white opacity-0 group-hover:opacity-75 hover:opacity-100 hover:bg-white/20 transition-all duration-300"[m
+[32m+[m[32m        className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-white/70 text-black opacity-90 hover:opacity-100 hover:bg-white transition-all duration-300 shadow-sm"[m
+         aria-label="Next slide"[m
+       >[m
+         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">[m

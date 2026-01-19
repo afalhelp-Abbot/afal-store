@@ -7,7 +7,7 @@ export default async function HomeServerContainer() {
   // Featured/primary product for hero (fallback to first active product)
   const { data: primary } = await supabase
     .from('products')
-    .select('id, slug')
+    .select('id, slug, logo_url, fb_page_url, contact_email')
     .eq('active', true)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -16,6 +16,9 @@ export default async function HomeServerContainer() {
   let startingPrice: number | null = null;
   let colorPrices: Record<string, number> = {};
   let colorAvailability: Record<string, number> = {};
+  const primaryLogoUrl = (primary as any)?.logo_url as string | null | undefined;
+  const primaryFbPageUrl = (primary as any)?.fb_page_url as string | null | undefined;
+  const primaryContactEmail = (primary as any)?.contact_email as string | null | undefined;
 
   if (primary?.id) {
     const { data: variants } = await supabase
@@ -61,11 +64,13 @@ export default async function HomeServerContainer() {
     }
   }
 
-  // Build products list for grid (scalable)
+  // Build products list for grid (scalable).
+  // Prefer explicit featured_rank ordering when available, otherwise newest first.
   const { data: products } = await supabase
     .from('products')
-    .select('id, name, slug')
+    .select('id, name, slug, featured_rank, created_at')
     .eq('active', true)
+    .order('featured_rank', { ascending: true, nullsFirst: false })
     .order('created_at', { ascending: false });
 
   let productCards: { id: string; name: string; slug: string; fromPrice: number | null; image: string | null }[] = [];
@@ -92,12 +97,20 @@ export default async function HomeServerContainer() {
     productCards.push({ id: pid, name, slug, fromPrice, image });
   }
 
+  const activeProductsCount = productCards.length;
+  const singleProductSlug = activeProductsCount === 1 ? productCards[0]?.slug ?? null : null;
+
   return (
     <HomePresenter
       startingPrice={startingPrice}
       colorPrices={colorPrices}
       colorAvailability={colorAvailability}
       products={productCards}
+      logoUrl={primaryLogoUrl ?? null}
+      contactEmail={primaryContactEmail ?? null}
+      fbPageUrl={primaryFbPageUrl ?? null}
+      activeProductsCount={activeProductsCount}
+      singleProductSlug={singleProductSlug}
     />
   );
 }

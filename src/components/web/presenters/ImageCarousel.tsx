@@ -66,7 +66,7 @@ export default function ImageCarousel({ images, interval = 5000 }: ImageCarousel
       {/* Navigation Arrows */}
       <button
         onClick={prevSlide}
-        className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-white opacity-0 group-hover:opacity-75 hover:opacity-100 hover:bg-white/20 transition-all duration-300"
+        className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-white/70 text-black opacity-90 hover:opacity-100 hover:bg-white transition-all duration-300 shadow-sm"
         aria-label="Previous slide"
       >
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -75,7 +75,7 @@ export default function ImageCarousel({ images, interval = 5000 }: ImageCarousel
       </button>
       <button
         onClick={nextSlide}
-        className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-white opacity-0 group-hover:opacity-75 hover:opacity-100 hover:bg-white/20 transition-all duration-300"
+        className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-white/70 text-black opacity-90 hover:opacity-100 hover:bg-white transition-all duration-300 shadow-sm"
         aria-label="Next slide"
       >
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

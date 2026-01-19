@@ -402,12 +402,22 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
       </div>
 
       {/* Trust row */}
-      <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-600">
-        <span className="inline-flex items-center gap-1"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 12H4"/><path d="M14 6l6 6-6 6"/></svg> Cash on Delivery</span>
-        <span className="inline-flex items-center gap-1"><svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21V7a2 2 0 0 0-2-2h-3l-2-2H8L6 5H5a2 2 0 0 0-2 2v14z"/></svg> 24–48h Dispatch</span>
-        <button type="button" onClick={()=>{ setShowReturns(true); try { track('ClickReturnsInfo'); } catch {} }} className="inline-flex items-center gap-1 hover:underline">
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l3 3"/></svg>
-          Easy Returns
+      <div className="flex flex-wrap items-center gap-4 text-sm sm:text-base text-gray-700 mt-1">
+        <span className="inline-flex items-center gap-2">
+          <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 12H4"/><path d="M14 6l6 6-6 6"/></svg>
+          <span className="font-semibold">Cash on Delivery</span>
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21V7a2 2 0 0 0-2-2h-3l-2-2H8L6 5H5a2 2 0 0 0-2 2v14z"/></svg>
+          <span className="font-semibold">24–48h Dispatch</span>
+        </span>
+        <button
+          type="button"
+          onClick={()=>{ setShowReturns(true); try { track('ClickReturnsInfo'); } catch {} }}
+          className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-4 py-1.5 hover:bg-gray-200 hover:underline text-sm sm:text-base shadow-sm"
+        >
+          <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l3 3"/></svg>
+          <span className="font-semibold whitespace-nowrap">Easy Returns – click to read return policy</span>
         </button>
         {darazTrustLine && darazUrl && (
           <a
@@ -415,9 +425,9 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
             target="_blank"
             rel="noopener"
             onClick={()=>{ try { track('ClickDarazTrust'); } catch {} }}
-            className="inline-flex items-center gap-1 hover:underline"
+            className="inline-flex items-center gap-1.5 hover:underline"
           >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12l2-2 4 4 8-8 2 2-10 10-6-6z"/></svg>
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12l2-2 4 4 8-8 2 2-10 10-6-6z"/></svg>
             Same seller on Daraz
           </a>
         )}

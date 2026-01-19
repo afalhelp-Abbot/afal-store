@@ -1,8 +1,9 @@
 'use client';
 
 import React from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
+import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import ImageCarousel from './ImageCarousel';
 
 type HomePresenterProps = {
@@ -11,6 +12,11 @@ type HomePresenterProps = {
   colorPrices?: Record<string, number>;
   colorAvailability?: Record<string, number>;
   products?: { id: string; name: string; slug: string; fromPrice: number | null; image: string | null }[];
+  logoUrl?: string | null;
+  contactEmail?: string | null;
+  fbPageUrl?: string | null;
+  activeProductsCount?: number;
+  singleProductSlug?: string | null;
 };
 
 type ColorOption = {
@@ -19,7 +25,8 @@ type ColorOption = {
   tailwindClass: string;
 };
 
-export default function HomePresenter({ onAddToCart, startingPrice, colorPrices, colorAvailability, products }: HomePresenterProps) {
+export default function HomePresenter({ onAddToCart, startingPrice, colorPrices, colorAvailability, products, logoUrl, contactEmail, fbPageUrl, activeProductsCount, singleProductSlug }: HomePresenterProps) {
+  const router = useRouter();
   const tealName = React.useMemo(() => (colorPrices && 'Teal' in (colorPrices ?? {}) && !('Teel' in (colorPrices ?? {})) ? 'Teal' : 'Teel'), [colorPrices]);
   const colorOptions: ColorOption[] = React.useMemo(() => ([
     { name: 'Black', value: '#000000', tailwindClass: 'bg-black' },
@@ -29,91 +36,174 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
   ]), [tealName]);
   const [selectedColor, setSelectedColor] = React.useState<ColorOption>(colorOptions[0]);
   const [activeIndex, setActiveIndex] = React.useState(0);
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const hasProducts = Array.isArray(products) && products.length > 0;
   const activeProduct = hasProducts ? products[Math.max(0, Math.min(activeIndex, products.length - 1))] : null;
+  const productCards = Array.isArray(products) ? products.slice(0, 4) : [];
+  const hasSlider = Array.isArray(products) && products.length > 4;
   const handleAdd = React.useCallback(() => {
     if (typeof onAddToCart === 'function') onAddToCart();
   }, [onAddToCart]);
+  const scrollOrRouteToProducts = React.useCallback(() => {
+    const count = typeof activeProductsCount === 'number' ? activeProductsCount : (Array.isArray(products) ? products.length : 0);
+
+    // If exactly one active product, go straight to that LP using the most reliable slug.
+    if (count === 1) {
+      const fallbackSlug = Array.isArray(products) && products.length === 1 ? products[0].slug : undefined;
+      const targetSlug = singleProductSlug || fallbackSlug;
+      if (targetSlug) {
+        router.push(`/lp/${targetSlug}`);
+        return;
+      }
+    }
+
+    if (typeof document === 'undefined') return;
+    const el = document.getElementById('home-products');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [activeProductsCount, singleProductSlug, products, router]);
   return (
     <div className="min-h-screen bg-gradient-to-r from-blue-100 via-blue-200 to-blue-100">
       {/* Header */}
       <header className="bg-white/95 backdrop-blur-sm shadow-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <h1 className="text-3xl font-bold text-blue-600">Afal Store</h1>
-              <span className="text-blue-700 tracking-wide uppercase text-sm font-medium">Ultimate Shopping Store</span>
+            <div className="flex items-center space-x-3 sm:space-x-4">
+              <div className="flex items-center gap-2">
+                {logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={logoUrl}
+                    alt="Afal Store logo"
+                    className="h-8 w-8 sm:h-10 sm:w-10 rounded-md object-contain border border-blue-100 bg-white"
+                  />
+                ) : null}
+                <h1 className="text-2xl sm:text-3xl font-bold text-blue-600">Afal Store</h1>
+              </div>
+              <span className="text-blue-700 tracking-wide uppercase text-xs sm:text-sm font-medium">Ultimate Shopping Store</span>
             </div>
-            <nav className="flex items-center space-x-8">
-              <Link href="/products" className="text-blue-700 hover:text-blue-800 font-medium transition-colors">Products</Link>
-              <Link href="/track-order" className="text-blue-700 hover:text-blue-800 font-medium transition-colors">Track Order</Link>
-              <button className="text-blue-700 hover:text-blue-800 relative group">
-                <svg className="w-6 h-6 transform group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+            <nav className="flex items-center space-x-2 sm:space-x-4">
+              {/* Desktop nav */}
+              <div className="hidden sm:flex items-center space-x-8">
+                <Link href="/products" className="text-blue-700 hover:text-blue-800 font-medium transition-colors">Products</Link>
+                <button className="text-blue-700 hover:text-blue-800 relative group">
+                  <svg className="w-6 h-6 transform group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                  </svg>
+                </button>
+              </div>
+              {/* Mobile hamburger */}
+              <button
+                type="button"
+                className="sm:hidden inline-flex items-center justify-center w-9 h-9 rounded-full bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100"
+                onClick={() => setMobileMenuOpen((open) => !open)}
+                aria-label="Toggle navigation menu"
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 7h16" />
+                  <path d="M4 12h16" />
+                  <path d="M4 17h16" />
                 </svg>
               </button>
             </nav>
           </div>
         </div>
-      </header>
-
-      {/* Hero Section */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
-          <div className="text-white space-y-8">
-            <h2 className="text-4xl sm:text-5xl font-bold text-blue-900">{activeProduct?.name || 'Android Tag'}</h2>
-            <div className="space-y-8 max-w-2xl">
-              <div className="h-px w-24 bg-gradient-to-r from-blue-600 via-blue-400 to-transparent" />
-              <div className="relative pl-6">
-                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-600 via-blue-400 to-transparent rounded-full" />
-                <p className="text-xl text-blue-900 leading-relaxed tracking-wide font-medium">
-                  Never lose what matters, for your world is never misplaced — always within reach, closer than you think, because every detail matters… now you have Android Tag.
-                </p>
-              </div>
-              <div className="relative pr-6 mt-8">
-                <div className="absolute right-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-600 via-blue-400 to-transparent rounded-full" />
-                <p className="text-xl text-blue-900 leading-relaxed font-urdu text-right tracking-wider font-medium" dir="rtl">
-                  جو کھوئے نہیں، وہی اپنے ہیں؛ آپ کا ہر قیمتی لمحہ ہمیشہ آپ کے پاس، محفوظ، ہمیشہ قریب — یادیں نہیں کھوتیں، کیونکہ ہر جزو اہم ہے… اب آپ کے پاس ہے Android Tag۔
-                </p>
-              </div>
-            </div>
-            <div className="space-y-8">
-              <div className="space-y-4">
-                <p className="text-sm font-medium text-blue-700">Select Color:</p>
-                <div className="flex items-center gap-3">
-                  {colorOptions.map((color) => (
-                    <button
-                      key={color.name}
-                      onClick={() => setSelectedColor(color)}
-                      className={`w-10 h-10 rounded-full ${color.tailwindClass} transition-all ${selectedColor.name === color.name ? 'scale-110 ring-2 ring-blue-600 ring-offset-2' : 'hover:scale-105 hover:shadow'} shadow-sm`}
-                      title={color.name}
-                      aria-label={`Select ${color.name} color`}
-                    />
-                  ))}
-                </div>
-                <div className="text-sm text-blue-800">Selected: <span className="font-semibold">{selectedColor.name}</span></div>
-              </div>
-              
-              <div className="flex items-center flex-wrap gap-4">
-                <span className="text-3xl font-bold text-blue-900">
-                  {activeProduct?.fromPrice != null ? `PKR ${Number(activeProduct.fromPrice).toLocaleString()}` : 'PKR —'}
-                </span>
-                <span className="text-sm text-blue-800">
-                  {(() => {
-                    const avail = colorAvailability?.[selectedColor.name];
-                    if (avail == null) return '';
-                    return avail > 0 ? `${avail} available` : 'Out of stock';
-                  })()}
-                </span>
-                <Link
-                  href={activeProduct ? `/lp/${activeProduct.slug}` : '/products'}
-                  className="font-medium px-8 py-3 rounded-lg transition-all text-white bg-blue-600 hover:bg-blue-700"
-                >
-                  View product
-                </Link>
-              </div>
+        {/* Mobile nav menu */}
+        {mobileMenuOpen && (
+          <div className="sm:hidden border-t border-blue-100 bg-white/95">
+            <div className="max-w-7xl mx-auto px-4 py-2 space-y-1">
+              <Link
+                href="/products"
+                className="block px-2 py-2 text-sm font-medium text-blue-800 hover:bg-blue-50 rounded-md"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Products
+              </Link>
+              <Link
+                href="/return-policy"
+                className="block px-2 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 rounded-md"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Returns Policy
+              </Link>
+              <Link
+                href={contactEmail ? `mailto:${contactEmail}` : (fbPageUrl || '#')}
+                className="block px-2 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 rounded-md"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Contact / Support
+              </Link>
             </div>
           </div>
+        )}
+      </header>
+
+      {/* Hero Section (brand-level) */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+          {/* Brand story */}
+          <div className="text-white space-y-8">
+            <h2 className="text-4xl sm:text-5xl font-bold text-blue-900">Afal Store — Smart Tech, Delivered Across Pakistan</h2>
+            <div className="space-y-6 max-w-2xl">
+              <div className="h-px w-24 bg-gradient-to-r from-blue-600 via-blue-400 to-transparent" />
+              <p className="text-lg sm:text-xl text-blue-900 leading-relaxed tracking-wide font-medium">
+                Cash on Delivery • 24–48h Dispatch • Easy Returns — buy with confidence.
+              </p>
+              <p className="text-sm sm:text-base text-blue-900 leading-relaxed font-urdu" dir="rtl">
+                پاکستان بھر میں کیش آن ڈیلیوری • 24–48 گھنٹے ڈسپیچ • آسان ریٹرنز
+              </p>
+              <p className="text-base text-blue-800 leading-relaxed">
+                We source practical, everyday devices and ship them directly from our team – clear pricing, fast dispatch, and
+                real support after delivery.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-blue-900">Cash on Delivery</h3>
+                    <p className="text-sm text-blue-800">Pay at your doorstep in major cities across Pakistan.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h11M9 21V3m4 18l7-8-7-8" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-blue-900">24–48h Dispatch</h3>
+                    <p className="text-sm text-blue-800">Orders leave our warehouse quickly so you get devices sooner.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v16h16V4H4zm4 6h8m-8 4h5" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-blue-900">Easy Returns</h3>
+                    <p className="text-sm text-blue-800">Clear, written return policy so there is no confusion.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-4 pt-4">
+              <Link
+                href="/products"
+                className="inline-flex items-center justify-center font-medium px-8 py-3 rounded-lg transition-all text-white bg-blue-600 hover:bg-blue-700 shadow-sm"
+              >
+                Explore Products
+              </Link>
+            </div>
+          </div>
+
+          {/* Visual side – generic brand visual (no product-specific copy) */}
           <div className="relative flex items-center justify-center bg-gradient-to-r from-blue-100/50 via-blue-200/50 to-blue-100/50 rounded-3xl overflow-hidden p-8">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.7)_0%,transparent_70%)]" />
             
@@ -131,39 +221,11 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
             </div>
 
             <div className="relative w-full max-w-4xl mx-auto px-4 py-8">
-              <div className="absolute inset-y-1/2 -left-1 translate-y-[-50%] hidden sm:flex">
-                {hasProducts && products.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveIndex((idx) => (idx - 1 + products.length) % products.length)}
-                    className="w-9 h-9 rounded-full bg-white/80 shadow flex items-center justify-center hover:bg-white text-blue-700"
-                    aria-label="Previous product"
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M12.5 4L7.5 10L12.5 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-              <div className="absolute inset-y-1/2 -right-1 translate-y-[-50%] hidden sm:flex">
-                {hasProducts && products.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveIndex((idx) => (idx + 1) % products.length)}
-                    className="w-9 h-9 rounded-full bg-white/80 shadow flex items-center justify-center hover:bg-white text-blue-700"
-                    aria-label="Next product"
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M7.5 4L12.5 10L7.5 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </button>
-                )}
-              </div>
               <div className="relative w-full max-w-2xl mx-auto bg-blend-screen">
                 <div className="absolute inset-0 bg-gradient-to-t from-blue-600/10 to-transparent" />
                 <Image
-                  src={(activeProduct?.image as string) || '/images/2c6e7458128b076e82bd99f52ab130c8.avif'}
-                  alt={activeProduct?.name || 'Android Tag Product'}
+                  src="/images/2c6e7458128b076e82bd99f52ab130c8.avif"
+                  alt="Afal Store smart devices"
                   width={800}
                   height={600}
                   className="w-full h-auto select-none mix-blend-multiply brightness-110"
@@ -176,146 +238,66 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
         </div>
       </div>
 
-      {/* Product Description */}
+      {/* Why Afal Store (generic trust section) */}
       <div className="relative py-24 overflow-hidden">
-        {/* Background Elements */}
         <div className="absolute inset-0 bg-gradient-to-b from-blue-100/50 to-white/50" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.1)_0%,transparent_50%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_right,rgba(59,130,246,0.1)_0%,transparent_50%)]" />
-        
-        {/* Curved Divider Top */}
-        <div className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-blue-100 to-transparent" />
-        <div className="absolute top-0 left-0 right-0 overflow-hidden">
-          <svg className="relative block w-full h-8 text-blue-100" viewBox="0 0 1200 80" preserveAspectRatio="none">
-            <path d="M321.39,56.44c58-10.79,114.16-30.13,172-41.86,82.39-16.72,168.19-17.73,250.45-.39C823.78,31,906.67,72,985.66,92.83c70.05,18.48,146.53,26.09,214.34,3V0H0V27.35A600.21,600.21,0,0,0,321.39,56.44Z" fill="currentColor" />
-          </svg>
-        </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="relative max-w-3xl mx-auto text-center space-y-8">
-            <h2 className="text-3xl sm:text-4xl font-bold text-blue-900">Never Lose What Matters</h2>
-            <p className="text-xl text-blue-800 leading-relaxed">
-              Introducing the Android Tag with Google Find My Device - your smart companion for keeping track of valuable items. 
-              Ultra-slim, waterproof, and powered by official Google integration.
+          <div className="max-w-4xl mx-auto text-center space-y-8">
+            <h2 className="text-3xl sm:text-4xl font-bold text-blue-900">Why shop with Afal Store?</h2>
+            <p className="text-lg text-blue-800 leading-relaxed">
+              Reliable delivery, clear policies, and support that actually replies.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 mt-16 text-left">
-              <div className="absolute -left-48 -top-48 w-96 h-96 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob" />
-              <div className="absolute -right-48 -bottom-48 w-96 h-96 bg-blue-300 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000" />
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-blue-900">Real-Time Tracking</h3>
-                    <p className="text-blue-700">Locate your items instantly with Google's trusted location services</p>
-                  </div>
+            <p className="text-sm text-blue-700 font-urdu" dir="rtl">
+              اعتماد، آسان ریٹرنز، اور بروقت ڈلیوری — یہی ہمارا وعدہ ہے۔
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 mt-6 text-left">
+              <div className="space-y-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h16" />
+                  </svg>
                 </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-blue-900">Year-Long Battery</h3>
-                    <p className="text-blue-700">12-month battery life with low power alerts</p>
-                  </div>
+                <h3 className="font-semibold text-blue-900">Verified Delivery Experience</h3>
+                <p className="text-sm text-blue-700">Clear dispatch timelines and delivery updates so you know what to expect.</p>
+              </div>
+              <div className="space-y-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h11M9 21V3m4 18l7-8-7-8" />
+                  </svg>
                 </div>
+                <h3 className="font-semibold text-blue-900">Fast Dispatch</h3>
+                <p className="text-sm text-blue-700">Most orders leave our warehouse within 2438 hours after confirmation.</p>
               </div>
-              <div className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-blue-900">IP68 Waterproof</h3>
-                    <p className="text-blue-700">Fully protected against water and dust</p>
-                  </div>
+              <div className="space-y-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
                 </div>
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-blue-900">Two-Way Finding</h3>
-                    <p className="text-blue-700">Find your phone or tag with two-way alerts</p>
-                  </div>
+                <h3 className="font-semibold text-blue-900">Easy Returns Policy</h3>
+                <p className="text-sm text-blue-700">Simple return rules shown upfront so there is no confusion.</p>
+              </div>
+              <div className="space-y-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h18M8 5v14m8-14v14M5 9h2m10 0h2M5 15h2m10 0h2" />
+                  </svg>
                 </div>
+                <h3 className="font-semibold text-blue-900">Direct Support</h3>
+                <p className="text-sm text-blue-700">Talk to our team on WhatsApp or email before and after purchase.</p>
               </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Features */}
-      <div className="relative py-20 bg-gradient-to-r from-blue-200 via-blue-300 to-blue-200 overflow-hidden">
-        {/* Wave Pattern */}
-        <div className="absolute top-0 left-0 right-0 h-24 opacity-20">
-          <svg className="w-full h-full" viewBox="0 0 1200 120" preserveAspectRatio="none">
-            <path d="M0,0V46.29c47.79,22.2,103.59,32.17,158,28,70.36-5.37,136.33-33.31,206.8-37.5C438.64,32.43,512.34,53.67,583,72.05c69.27,18,138.3,24.88,209.4,13.08,36.15-6,69.85-17.84,104.45-29.34C989.49,25,1113-14.29,1200,52.47V0Z" fill="currentColor" className="text-white/10" />
-            <path d="M0,0V15.81C13,36.92,27.64,56.86,47.69,72.05,99.41,111.27,165,111,224.58,91.58c31.15-10.15,60.09-26.07,89.67-39.8,40.92-19,84.73-46,130.83-49.67,36.26-2.85,70.9,9.42,98.6,31.56,31.77,25.39,62.32,62,103.63,73,40.44,10.79,81.35-6.69,119.13-24.28s75.16-39,116.92-43.05c59.73-5.85,113.28,22.88,168.9,38.84,30.2,8.66,59,6.17,87.09-7.5,22.43-10.89,48-26.93,60.65-49.24V0Z" fill="currentColor" className="text-white/5" />
-          </svg>
-        </div>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h3 className="text-3xl sm:text-4xl font-bold text-center mb-8 text-blue-800">Product Features</h3>
-          <div className="flex flex-nowrap overflow-x-auto gap-6 max-w-5xl mx-auto pb-4 px-2 pr-8 snap-x snap-mandatory -mx-2 scrollbar-blue">
-            <div className="flex-none w-[280px] snap-start">
-              <div className="mb-4">
-                <ImageCarousel 
-                  images={[
-                    { src: '/images/2c6e7458128b076e82bd99f52ab130c8.avif', alt: 'Find My Device Front' },
-                    { src: '/images/94caacfb5a2c869439a89646703d75bb.avif', alt: 'Find My Device App' },
-                  ]}
-                />
+              <div className="space-y-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h10M4 18h6" />
+                  </svg>
+                </div>
+                <h3 className="font-semibold text-blue-900">Curated Products Only</h3>
+                <p className="text-sm text-blue-700">We only list products we can support properly with parts and service.</p>
               </div>
-              <h4 className="text-lg font-bold mb-2 text-blue-800">Find My Device</h4>
-              <p className="text-sm text-blue-700">Official Google integration</p>
-            </div>
-
-            <div className="flex-none w-[280px] snap-start">
-              <div className="mb-4">
-                <ImageCarousel 
-                  images={[
-                    { src: '/images/3c03271147d6f8062d3cdbea740aee99.avif', alt: 'Battery Life Front' },
-                    { src: '/images/8f2cf7b23a638f499313f6fbf6bd4087.avif', alt: 'Battery Life Detail' },
-                  ]}
-                />
-              </div>
-              <h4 className="text-lg font-bold mb-2 text-blue-800">Long Battery</h4>
-              <p className="text-sm text-blue-700">12 months battery life</p>
-            </div>
-
-            <div className="flex-none w-[280px] snap-start">
-              <div className="mb-4">
-                <ImageCarousel 
-                  images={[
-                    { src: '/images/8227e60d14e5f9f681bd580a6671b3c5.avif', alt: 'Waterproof Front' },
-                    { src: '/images/cad05795ed848d2c89cb4b7b53970f4c.avif', alt: 'Waterproof Detail' },
-                  ]}
-                />
-              </div>
-              <h4 className="text-lg font-bold mb-2 text-blue-800">Waterproof</h4>
-              <p className="text-sm text-blue-700">IP68 water resistant</p>
-            </div>
-
-            <div className="flex-none w-[280px] snap-start">
-              <div className="mb-4">
-                <ImageCarousel 
-                  images={[
-                    { src: '/images/d3d9555482ccfc3130698b9400c07518.avif', alt: 'Compact Front' },
-                    { src: '/images/ab848a78a9c626e6cb937806b8c8fbfd.avif', alt: 'Compact Detail' },
-                  ]}
-                />
-              </div>
-              <h4 className="text-lg font-bold mb-2 text-blue-800">Compact</h4>
-              <p className="text-sm text-blue-700">Ultra-slim design</p>
             </div>
           </div>
         </div>
@@ -337,12 +319,8 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
                 </svg>
               </div>
               <p className="text-2xl text-blue-800 leading-loose font-urdu text-right" dir="rtl">
-                چابی گم ہوئی، تو دل گھبرایا،<br />
-                پرس گیا کہاں، کسی نے نہ پایا۔<br />
-                محبت کے تحفے بھی اکثر کھو جاتے،<br />
-                چھوٹی چھوٹی چیزیں بڑی یادیں بناتے۔<br />
-                اب ٹینشن نہیں، نہ کوئی جھنجھٹ باقی،<br />
-                کیونکہ ساتھ ہے Android Tag کا جادو باقی۔
+                ہر آرڈر کے ساتھ ہمارا وعدہ ہے — صاف بات، تیز ڈلیوری، اور آسان واپسی۔<br />
+                افال اسٹور کے ساتھ آن لائن خریداری کو بنائیں بے فکر اور پُراعتماد۔
               </p>
               <div className="mt-10 pt-6 border-t border-blue-100/50">
                 <div className="flex items-center gap-3 text-blue-700">
@@ -358,36 +336,114 @@ export default function HomePresenter({ onAddToCart, startingPrice, colorPrices,
           </div>
         </div>
       </div>
-      {/* Products Grid (scalable) */}
-      {Array.isArray(products) && products.length > 0 && (
-        <div className="py-16 bg-white/50">
+      {/* Products Grid / Slider (admin-driven, up to 4 items) */}
+      {productCards.length > 0 && (
+        <div id="home-products" className="py-16 bg-white/50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-2">
               <h3 className="text-2xl font-bold text-blue-900">Products</h3>
               <a href="/products" className="text-blue-700 hover:text-blue-900 text-sm font-medium">View all</a>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {products.map((p) => (
-                <Link key={p.id} href={`/lp/${p.slug}`} className="group rounded-xl border border-blue-100 bg-white hover:shadow-md transition-shadow overflow-hidden">
-                  <div className="aspect-[4/3] w-full bg-blue-50 grid place-items-center overflow-hidden">
-                    {p.image ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform" />
-                    ) : (
-                      <div className="text-blue-300 text-sm">Image coming soon</div>
-                    )}
-                  </div>
-                  <div className="p-4 space-y-1">
-                    <div className="font-medium text-blue-900 truncate">{p.name}</div>
-                    <div className="text-sm text-blue-700">{p.fromPrice != null ? `From PKR ${Number(p.fromPrice).toLocaleString()}` : 'Price coming soon'}</div>
-                    <div className="pt-2 text-sm text-blue-600 group-hover:text-blue-800 font-medium">View product →</div>
-                  </div>
-                </Link>
-              ))}
-            </div>
+            <p className="text-sm text-blue-700 mb-6">Choose a product to see full details, photos, and order options.</p>
+
+            {/* If we have more than 4 total active products, render a horizontal slider using the first 4 cards */}
+            {hasSlider ? (
+              <div className="flex flex-nowrap overflow-x-auto gap-6 pb-4 -mx-2 px-2 scrollbar-blue snap-x snap-mandatory">
+                {productCards.map((p) => (
+                  <Link
+                    key={p.id}
+                    href={`/lp/${p.slug}`}
+                    className="flex-none w-[260px] sm:w-[280px] snap-start group rounded-xl border border-blue-100 bg-white hover:shadow-md transition-shadow overflow-hidden"
+                  >
+                    <div className="aspect-[4/3] w-full bg-blue-50 grid place-items-center overflow-hidden">
+                      {p.image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={p.image}
+                          alt={p.name}
+                          className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform"
+                        />
+                      ) : (
+                        <div className="text-blue-300 text-sm">Image coming soon</div>
+                      )}
+                    </div>
+                    <div className="p-4 space-y-1">
+                      <div className="font-medium text-blue-900 truncate">{p.name}</div>
+                      <div className="text-sm text-blue-700">
+                        {p.fromPrice != null
+                          ? `From PKR ${Number(p.fromPrice).toLocaleString()}`
+                          : 'Price coming soon'}
+                      </div>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[11px] font-medium border border-blue-100">Cash on Delivery</span>
+                        <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[11px] font-medium border border-blue-100">Fast Dispatch</span>
+                      </div>
+                      <div className="pt-2 text-sm text-blue-600 group-hover:text-blue-800 font-medium">View details 92</div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                {productCards.map((p) => (
+                  <Link
+                    key={p.id}
+                    href={`/lp/${p.slug}`}
+                    className="group rounded-xl border border-blue-100 bg-white hover:shadow-md transition-shadow overflow-hidden"
+                  >
+                    <div className="aspect-[4/3] w-full bg-blue-50 grid place-items-center overflow-hidden">
+                      {p.image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={p.image}
+                          alt={p.name}
+                          className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform"
+                        />
+                      ) : (
+                        <div className="text-blue-300 text-sm">Image coming soon</div>
+                      )}
+                    </div>
+                    <div className="p-4 space-y-1">
+                      <div className="font-medium text-blue-900 truncate">{p.name}</div>
+                      <div className="text-sm text-blue-700">
+                        {p.fromPrice != null
+                          ? `From PKR ${Number(p.fromPrice).toLocaleString()}`
+                          : 'Price coming soon'}
+                      </div>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[11px] font-medium border border-blue-100">Cash on Delivery</span>
+                        <span className="inline-flex items-center rounded-full bg-blue-50 text-blue-700 px-2 py-0.5 text-[11px] font-medium border border-blue-100">Fast Dispatch</span>
+                      </div>
+                      <div className="pt-2 text-sm text-blue-600 group-hover:text-blue-800 font-medium">View details 92</div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
+      {/* Footer / final trust strip */}
+      <footer className="border-t border-blue-100 bg-white/80">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-4">
+          <div className="flex flex-wrap gap-4 text-sm text-blue-800">
+            <Link href="/delivery-shipping" className="hover:text-blue-900 underline-offset-2 hover:underline">Delivery &amp; Shipping</Link>
+            <Link href="/return-policy" className="hover:text-blue-900 underline-offset-2 hover:underline">Returns Policy</Link>
+            <Link
+              href={contactEmail ? `mailto:${contactEmail}` : (fbPageUrl || '#')}
+              className="hover:text-blue-900 underline-offset-2 hover:underline"
+            >
+              Contact / Support
+            </Link>
+          </div>
+          <div className="text-sm text-blue-700">
+            Cash on Delivery available 1 Fast dispatch 1 Easy returns 1 Support that responds.
+          </div>
+          <p className="text-sm text-blue-700 font-urdu" dir="rtl">
+            کیش آن ڈیلیوری 1 تیز ڈسپیچ 1 آسان ریٹرنز 1 فوری سپورٹ
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }

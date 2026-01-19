@@ -1,5 +1,6 @@
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +39,12 @@ export default async function ProductsIndexPage() {
     const image = media && media.length ? ((media[0] as any).url as string) : null;
 
     cards.push({ id: pid, name, slug, fromPrice, image });
+  }
+
+  // If there is only one active product, route directly to its LP instead of showing a listing.
+  if (cards.length === 1) {
+    const only = cards[0];
+    redirect(`/lp/${only.slug}`);
   }
 
   return (
