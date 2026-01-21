@@ -2,15 +2,19 @@ import { requireAdmin } from '@/lib/auth';
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
 import Link from 'next/link';
 
-type Search = { q?: string; status?: string; productId?: string; from?: string; to?: string };
+type Search = { q?: string; status?: string; productId?: string; from?: string; to?: string; page?: string };
 
 async function fetchOrders(search: Search) {
   const supabase = getSupabaseServerClient();
+  const pageSize = 50;
+  const currentPage = Math.max(1, Number(search.page || '1') || 1);
+  const fromIndex = (currentPage - 1) * pageSize;
+  const toIndex = fromIndex + pageSize - 1;
+
   let query = supabase
     .from('orders')
-    .select('id, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount, discount_total')
-    .order('created_at', { ascending: false })
-    .limit(50);
+    .select('id, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount, discount_total', { count: 'exact' })
+    .order('created_at', { ascending: false });
 
   if (search.status && search.status !== 'all') {
     query = query.eq('status', search.status);
@@ -36,15 +40,15 @@ async function fetchOrders(search: Search) {
     if (lineErr) throw lineErr;
     const orderIds = Array.from(new Set((lineOrders ?? []).map((r: any) => r.order_id)));
     if (orderIds.length === 0) {
-      return [] as any[];
+      return { orders: [] as any[], totalCount: 0 } as const;
     }
     query = query.in('id', orderIds);
   }
-  const { data, error } = await query;
+  const { data, error, count } = await query.range(fromIndex, toIndex);
   if (error) throw error;
 
   const ids = (data ?? []).map((o) => o.id);
-  if (ids.length === 0) return [] as any[];
+  if (ids.length === 0) return { orders: [] as any[], totalCount: count ?? 0 } as const;
 
   // Fetch totals per order from order_lines (preferred: sum of line_total)
   const { data: lines } = await supabase
@@ -57,32 +61,43 @@ async function fetchOrders(search: Search) {
     const key = String((ln as any).order_id);
     totals[key] = (totals[key] ?? 0) + Number((ln as any).line_total || 0);
   }
-  return (data ?? []).map((o) => ({
+  const ordersWithTotals = (data ?? []).map((o) => ({
     ...o,
     total:
       (totals[String(o.id)] ?? 0) +
       Number((o as any).shipping_amount || 0) -
       Number((o as any).discount_total || 0),
   }));
+
+  return { orders: ordersWithTotals, totalCount: count ?? ordersWithTotals.length } as const;
 }
 
 export default async function OrdersPage({ searchParams }: { searchParams: Search }) {
   await requireAdmin();
   const supabase = getSupabaseServerClient();
   let orders: any[] = [];
+  let totalCount = 0;
   let fetchError: any = null;
   try {
-    orders = await fetchOrders(searchParams || {});
+    const result = await fetchOrders(searchParams || {});
+    orders = result.orders;
+    totalCount = result.totalCount;
   } catch (e: any) {
     fetchError = e;
   }
   const totalOrders = orders.length;
-  const totalRevenue = orders.reduce((sum, o: any) => sum + Number(o.total || 0), 0);
+  // Exclude cancelled orders from revenue summary
+  const totalRevenue = orders
+    .filter((o: any) => String(o.status).toLowerCase() !== 'cancelled')
+    .reduce((sum, o: any) => sum + Number(o.total || 0), 0);
   const currentStatus = searchParams?.status ?? 'all';
   const q = searchParams?.q ?? '';
   const currentProduct = searchParams?.productId ?? 'all';
   const currentFrom = searchParams?.from ?? '';
   const currentTo = searchParams?.to ?? '';
+  const currentPage = Math.max(1, Number(searchParams?.page || '1') || 1);
+  const pageSize = 50;
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
   // Fetch products for the dropdown
   const { data: products } = await supabase
@@ -162,6 +177,9 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
           <div>
             <span className="font-medium">Total revenue:</span> {Number(totalRevenue).toLocaleString()} PKR
           </div>
+          <div className="text-xs text-gray-600">
+            Page {currentPage} of {totalPages} (overall matching orders: {totalCount})
+          </div>
         </div>
       )}
       <div className="overflow-x-auto">
@@ -182,7 +200,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
           <tbody>
             {orders.map((o: any, index: number) => (
               <tr key={o.id} className="border-b hover:bg-gray-50">
-                <td className="py-2 pr-4">{index + 1}</td>
+                <td className="py-2 pr-4">{(currentPage - 1) * pageSize + index + 1}</td>
                 <td className="py-2 pr-4"><Link className="underline" href={`/admin/orders/${o.id}`}>#{o.id}</Link></td>
                 <td className="py-2 pr-4">{o.customer_name}</td>
                 <td className="py-2 pr-4">{o.email || '-'}</td>
@@ -205,6 +223,45 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
           </tbody>
         </table>
       </div>
+      {!fetchError && totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4 text-sm">
+          <div>
+            Showing page {currentPage} of {totalPages}
+          </div>
+          <div className="flex gap-2">
+            {currentPage > 1 && (
+              <Link
+                href={`/admin/orders?${new URLSearchParams({
+                  ...(currentStatus !== 'all' ? { status: String(currentStatus) } : {}),
+                  ...(currentProduct !== 'all' ? { productId: String(currentProduct) } : {}),
+                  ...(q ? { q: String(q) } : {}),
+                  ...(currentFrom ? { from: String(currentFrom) } : {}),
+                  ...(currentTo ? { to: String(currentTo) } : {}),
+                  page: String(currentPage - 1),
+                }).toString()}`}
+                className="px-3 py-1 border rounded hover:bg-gray-50"
+              >
+                Previous
+              </Link>
+            )}
+            {currentPage < totalPages && (
+              <Link
+                href={`/admin/orders?${new URLSearchParams({
+                  ...(currentStatus !== 'all' ? { status: String(currentStatus) } : {}),
+                  ...(currentProduct !== 'all' ? { productId: String(currentProduct) } : {}),
+                  ...(q ? { q: String(q) } : {}),
+                  ...(currentFrom ? { from: String(currentFrom) } : {}),
+                  ...(currentTo ? { to: String(currentTo) } : {}),
+                  page: String(currentPage + 1),
+                }).toString()}`}
+                className="px-3 py-1 border rounded hover:bg-gray-50"
+              >
+                Next
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
