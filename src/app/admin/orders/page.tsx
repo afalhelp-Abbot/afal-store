@@ -2,7 +2,7 @@ import { requireAdmin } from '@/lib/auth';
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
 import Link from 'next/link';
 
-type Search = { q?: string; status?: string; productId?: string };
+type Search = { q?: string; status?: string; productId?: string; from?: string; to?: string };
 
 async function fetchOrders(search: Search) {
   const supabase = getSupabaseServerClient();
@@ -14,6 +14,13 @@ async function fetchOrders(search: Search) {
 
   if (search.status && search.status !== 'all') {
     query = query.eq('status', search.status);
+  }
+  if (search.from) {
+    // Interpret from/to as dates in local (Asia/Karachi) but store as UTC timestamps; here we compare on date string
+    query = query.gte('created_at', `${search.from}T00:00:00`);
+  }
+  if (search.to) {
+    query = query.lte('created_at', `${search.to}T23:59:59.999`);
   }
   if (search.q && search.q.trim()) {
     const q = `%${search.q.trim()}%`;
@@ -69,9 +76,13 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
   } catch (e: any) {
     fetchError = e;
   }
+  const totalOrders = orders.length;
+  const totalRevenue = orders.reduce((sum, o: any) => sum + Number(o.total || 0), 0);
   const currentStatus = searchParams?.status ?? 'all';
   const q = searchParams?.q ?? '';
   const currentProduct = searchParams?.productId ?? 'all';
+  const currentFrom = searchParams?.from ?? '';
+  const currentTo = searchParams?.to ?? '';
 
   // Fetch products for the dropdown
   const { data: products } = await supabase
@@ -100,6 +111,8 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
             <option value="packed">Packed</option>
             <option value="shipped">Shipped</option>
             <option value="cancelled">Cancelled</option>
+            <option value="return_in_transit">Return in transit</option>
+            <option value="returned">Returned</option>
           </select>
         </div>
         <div>
@@ -115,6 +128,24 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
           <label className="block text-sm">Search</label>
           <input name="q" defaultValue={q} placeholder="Name or Phone" className="border rounded px-3 py-2 w-full" />
         </div>
+        <div>
+          <label className="block text-sm">From date</label>
+          <input
+            type="date"
+            name="from"
+            defaultValue={currentFrom}
+            className="border rounded px-3 py-2"
+          />
+        </div>
+        <div>
+          <label className="block text-sm">To date</label>
+          <input
+            type="date"
+            name="to"
+            defaultValue={currentTo}
+            className="border rounded px-3 py-2"
+          />
+        </div>
         <button className="bg-black text-white rounded px-4 py-2">Apply</button>
       </form>
 
@@ -123,10 +154,21 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
           Error loading orders: {String(fetchError?.message || fetchError)}
         </div>
       )}
+      {!fetchError && (
+        <div className="border rounded p-3 text-sm bg-gray-50 flex flex-wrap gap-4 justify-between items-center">
+          <div>
+            <span className="font-medium">Total orders:</span> {totalOrders}
+          </div>
+          <div>
+            <span className="font-medium">Total revenue:</span> {Number(totalRevenue).toLocaleString()} PKR
+          </div>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead>
             <tr className="text-left border-b">
+              <th className="py-2 pr-4">#</th>
               <th className="py-2 pr-4">Order</th>
               <th className="py-2 pr-4">Customer</th>
               <th className="py-2 pr-4">Email</th>
@@ -138,8 +180,9 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
             </tr>
           </thead>
           <tbody>
-            {orders.map((o: any) => (
+            {orders.map((o: any, index: number) => (
               <tr key={o.id} className="border-b hover:bg-gray-50">
+                <td className="py-2 pr-4">{index + 1}</td>
                 <td className="py-2 pr-4"><Link className="underline" href={`/admin/orders/${o.id}`}>#{o.id}</Link></td>
                 <td className="py-2 pr-4">{o.customer_name}</td>
                 <td className="py-2 pr-4">{o.email || '-'}</td>
@@ -156,7 +199,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
             ))}
             {orders.length === 0 && (
               <tr>
-                <td className="py-4 text-gray-500" colSpan={7}>No orders found.</td>
+                <td className="py-4 text-gray-500" colSpan={8}>No orders found.</td>
               </tr>
             )}
           </tbody>

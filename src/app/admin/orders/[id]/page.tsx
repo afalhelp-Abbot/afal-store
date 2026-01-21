@@ -16,7 +16,7 @@ async function fetchOrder(id: string) {
   // Fetch order lines with variant SKU
   const { data: lines, error: linesError } = await supabase
     .from('order_lines')
-    .select('id, order_id, variant_id, qty, unit_price, line_total, variants!inner(sku)')
+    .select('id, order_id, variant_id, qty, unit_price, line_total, variants!inner(sku), return_status, return_condition')
     .eq('order_id', id);
   if (linesError) throw linesError;
 
@@ -128,7 +128,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
 
         <div className="border rounded p-4 space-y-4">
           <h2 className="font-medium">Update Status</h2>
-          <StatusForm id={String(order.id)} currentStatus={String(order.status)} />
+          <StatusForm id={String(order.id)} currentStatus={String(order.status)} items={items as any[]} />
 
           <div className="border-t pt-4">
             <h3 className="font-medium mb-2">Actions</h3>
@@ -152,14 +152,14 @@ async function updateStatusAction(formData: FormData) {
     return { ok: false, message: 'Missing id or status' } as const;
   }
 
-  const allowed = ['pending', 'packed', 'shipped', 'cancelled'];
+  const allowed = ['pending', 'packed', 'shipped', 'return_in_transit', 'cancelled', 'returned'];
   if (!allowed.includes(status)) {
     return { ok: false, message: 'Invalid status' } as const;
   }
 
   const supabase = getSupabaseServerClient();
 
-  // Fetch current status and items to compute inventory deltas
+  // Fetch current status for transition validation
   const { data: existing, error: fetchErr } = await supabase
     .from('orders')
     .select('id, status')
@@ -173,67 +173,54 @@ async function updateStatusAction(formData: FormData) {
     return { ok: true } as const;
   }
 
-  const { data: items, error: itemsErr } = await supabase
-    .from('order_lines')
-    .select('variant_id, qty')
-    .eq('order_id', id);
-  if (itemsErr) return { ok: false, message: itemsErr.message } as const;
-
-  // Update order status first
-  const { error: updErr } = await supabase
-    .from('orders')
-    .update({ status })
-    .eq('id', id);
-  if (updErr) return { ok: false, message: updErr.message } as const;
-
-  // Compute inventory adjustments based on transition
-  // Rules:
-  // - pending -> cancelled: reserved -= qty
-  // - pending/packed -> shipped: reserved -= qty, on_hand -= qty
-  // - cancelled -> pending: reserved += qty (re-activate)
-  // Other transitions: no-op
   const from = fromStatus.toLowerCase();
   const to = status.toLowerCase();
 
-  const shouldUnreserve = (from === 'pending' && to === 'cancelled') || (from === 'pending' && to === 'shipped') || (from === 'packed' && to === 'shipped');
-  const shouldShip = (to === 'shipped') && (from === 'pending' || from === 'packed');
-  const shouldReReserve = (from === 'cancelled' && to === 'pending');
+  // Enforce high-level transition rules
+  // - shipped -> cancelled: not allowed (no inventory change should happen)
+  // - returned -> anything else: not allowed (terminal state)
+  if (from === 'shipped' && to === 'cancelled') {
+    return { ok: false, message: 'Cannot change shipped orders back to cancelled.' } as const;
+  }
+  if (from === 'returned' && to !== 'returned') {
+    return { ok: false, message: `Cannot move returned orders to ${to}.` } as const;
+  }
+  // Returned can only be set from shipped or return_in_transit
+  if (to === 'returned' && !(from === 'shipped' || from === 'return_in_transit')) {
+    return { ok: false, message: 'Returned status is only allowed from Shipped or Return in transit.' } as const;
+  }
 
-  for (const it of (items || [])) {
-    const vid = (it as any).variant_id as string;
-    const qty = Number((it as any).qty || 0);
-    if (!vid || !qty) continue;
-
-    // Read current inventory row
-    const { data: cur } = await supabase
-      .from('inventory')
-      .select('stock_on_hand, reserved')
-      .eq('variant_id', vid)
-      .maybeSingle();
-    let on = Number(cur?.stock_on_hand || 0);
-    let res = Number(cur?.reserved || 0);
-
-    if (shouldUnreserve) {
-      res = Math.max(0, res - qty);
+  // Collect per-line return conditions when marking as returned (from shipped or return_in_transit)
+  let returnLines: Record<string, { condition: 'resellable' | 'not_resellable' }> | null = null;
+  if (to === 'returned') {
+    returnLines = {};
+    for (const [key, value] of Array.from(formData.entries())) {
+      const match = /^item\[(.+)\]\[return_condition\]$/.exec(String(key));
+      if (!match) continue;
+      const lineId = match[1];
+      const cond = String(value);
+      if (cond === 'resellable' || cond === 'not_resellable') {
+        returnLines[lineId] = { condition: cond };
+      }
     }
-    if (shouldReReserve) {
-      res = res + qty;
-    }
-    if (shouldShip) {
-      // Reduce physical stock; keep non-negative and not below reserved
-      on = Math.max(res, on - qty);
-    }
+  }
 
-    await supabase
-      .from('inventory')
-      .upsert({ variant_id: vid, stock_on_hand: on, reserved: res }, { onConflict: 'variant_id' });
+  // Delegate all inventory math + status update to Postgres RPC
+  const { error: rpcError } = await supabase.rpc('adjust_inventory_for_order_status', {
+    p_order_id: id,
+    p_from_status: fromStatus,
+    p_to_status: status,
+    p_return_lines: returnLines,
+  });
+  if (rpcError) {
+    return { ok: false, message: rpcError.message } as const;
   }
 
   revalidatePath(`/admin/orders/${id}`);
   return { ok: true } as const;
 }
 
-function StatusForm({ id, currentStatus }: { id: string; currentStatus: string }) {
+function StatusForm({ id, currentStatus, items }: { id: string; currentStatus: string; items: any[] }) {
   return (
     <form action={updateStatusAction} className="space-y-3">
       <input type="hidden" name="id" value={id} />
@@ -243,8 +230,32 @@ function StatusForm({ id, currentStatus }: { id: string; currentStatus: string }
           <option value="pending">Pending</option>
           <option value="packed">Packed</option>
           <option value="shipped">Shipped</option>
+          <option value="return_in_transit">Return in transit</option>
           <option value="cancelled">Cancelled</option>
+          <option value="returned">Returned</option>
         </select>
+      </div>
+      <div className="space-y-2 text-sm border-t pt-3">
+        <div className="font-medium">Return condition (used when marking as Returned)</div>
+        <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+          {items.map((it: any) => (
+            <div key={it.id} className="flex items-center justify-between gap-2">
+              <div className="flex-1">
+                <div className="font-mono text-xs">{it.variants?.sku || it.variant_id}</div>
+                <div className="text-gray-600 text-xs">Qty: {it.qty}</div>
+              </div>
+              <select
+                name={`item[${it.id}][return_condition]`}
+                defaultValue={it.return_condition || ''}
+                className="border rounded px-2 py-1 text-xs"
+              >
+                <option value="">--</option>
+                <option value="resellable">Resellable</option>
+                <option value="not_resellable">Not resellable</option>
+              </select>
+            </div>
+          ))}
+        </div>
       </div>
       <button className="bg-black text-white rounded px-4 py-2">Save</button>
     </form>
