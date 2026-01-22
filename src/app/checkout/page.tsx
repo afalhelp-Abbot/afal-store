@@ -62,7 +62,7 @@ function CheckoutInner() {
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<{ order_id: string } | null>(null);
+  const [success, setSuccess] = useState<{ order_id: string; order_short_code: string | null } | null>(null);
   const [lines, setLines] = useState<Array<CartItem>>([]);
   const [variants, setVariants] = useState<Record<string, VariantRow>>({});
   const [thumbByProduct, setThumbByProduct] = useState<Record<string, string>>({});
