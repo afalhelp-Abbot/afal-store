@@ -13,7 +13,7 @@ async function fetchOrders(search: Search) {
 
   let query = supabase
     .from('orders')
-    .select('id, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount, discount_total', { count: 'exact' })
+    .select('id, short_code, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount, discount_total', { count: 'exact' })
     .order('created_at', { ascending: false });
 
   if (search.status && search.status !== 'all') {
@@ -201,7 +201,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
             {orders.map((o: any, index: number) => (
               <tr key={o.id} className="border-b hover:bg-gray-50">
                 <td className="py-2 pr-4">{(currentPage - 1) * pageSize + index + 1}</td>
-                <td className="py-2 pr-4"><Link className="underline" href={`/admin/orders/${o.id}`}>#{o.id}</Link></td>
+                <td className="py-2 pr-4"><Link className="underline" href={`/admin/orders/${o.id}`}>#{o.short_code || o.id}</Link></td>
                 <td className="py-2 pr-4">{o.customer_name}</td>
                 <td className="py-2 pr-4">{o.email || '-'}</td>
                 <td className="py-2 pr-4">{o.phone}</td>

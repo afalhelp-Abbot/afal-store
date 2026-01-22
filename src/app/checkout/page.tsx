@@ -647,14 +647,14 @@ function CheckoutInner() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Failed to place order");
-      // success: store id, clear cart in UI + URL, reset form
-      setSuccess({ order_id: data.order_id });
+      // success: store id + short code (if provided), clear cart in UI + URL, reset form
+      setSuccess({ order_id: data.order_id, order_short_code: data.order_short_code || null });
       // capture totals before clearing
       const s = Number(subtotal) || 0;
       const ship = Number(shippingAmount || 0);
       setSuccessTotals({ subtotal: s, shipping: ship, total: s + ship });
 
-      // GA4: purchase (deduped per order_id)
+      // GA4: purchase (deduped per order_id). We keep using the UUID here.
       if (effectiveGaId && data.order_id && !hasPurchaseFired(data.order_id)) {
         const items = lines.map((ln) => {
           const v = variants[ln.variant_id];
@@ -749,7 +749,7 @@ function CheckoutInner() {
               <div className="text-2xl">✅</div>
               <div>
                 <h2 className="text-xl font-semibold mb-1">Thank you! Your order has been placed.</h2>
-                <p className="">Order ID: <span className="font-semibold">#{success.order_id}</span></p>
+                <p className="">Order ID: <span className="font-semibold">#{(success as any).order_short_code || success.order_id}</span></p>
                 <p className="mt-1 text-sm text-green-800">We will contact you shortly to confirm and arrange delivery.</p>
                 <div className="mt-4 flex gap-3">
                   <Link href={productSlug ? `/lp/${productSlug}` : "/"} className="inline-block bg-black text-white px-4 py-2 rounded">Continue Shopping</Link>

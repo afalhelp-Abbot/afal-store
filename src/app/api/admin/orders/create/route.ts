@@ -78,6 +78,16 @@ export async function POST(req: Request) {
 
     const orderId = order!.id as string;
 
+    // Generate a short, human-friendly order code for this admin-created order.
+    try {
+      const { error: scErr } = await supabase.rpc('generate_order_short_code', { p_order_id: orderId });
+      if (scErr) {
+        console.error('[admin/orders/create] short code RPC error', scErr.message);
+      }
+    } catch (e) {
+      console.error('[admin/orders/create] short code generation failed', e);
+    }
+
     // Insert items with locked prices
     const rows = items.map((it) => ({
       order_id: orderId,

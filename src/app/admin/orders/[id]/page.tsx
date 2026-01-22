@@ -7,7 +7,7 @@ async function fetchOrder(id: string) {
   const supabase = getSupabaseServerClient();
   const { data: order, error } = await supabase
     .from('orders')
-    .select('id, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount, discount_total, promo_name')
+    .select('id, short_code, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount, discount_total, promo_name')
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;
@@ -47,7 +47,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Order #{order.id}</h1>
+        <h1 className="text-2xl font-semibold">Order #{order.short_code || order.id}</h1>
         <Link className="underline" href="/admin/orders">Back to Orders</Link>
       </div>
 
@@ -190,6 +190,28 @@ async function updateStatusAction(formData: FormData) {
     return { ok: false, message: 'Returned status is only allowed from Shipped or Return in transit.' } as const;
   }
 
+  // Simple transition: pending -> cancelled. We release reserved stock via
+  // a dedicated Postgres function and then update the order status.
+  if (from === 'pending' && to === 'cancelled') {
+    const { error: relErr } = await supabase.rpc('release_reserved_for_cancel', {
+      p_order_id: id,
+    });
+    if (relErr) {
+      return { ok: false, message: relErr.message } as const;
+    }
+
+    const { error: updErr } = await supabase
+      .from('orders')
+      .update({ status })
+      .eq('id', id);
+    if (updErr) {
+      return { ok: false, message: updErr.message } as const;
+    }
+
+    revalidatePath(`/admin/orders/${id}`);
+    return { ok: true } as const;
+  }
+
   // Collect per-line return conditions when marking as returned (from shipped or return_in_transit)
   let returnLines: Record<string, { condition: 'resellable' | 'not_resellable' }> | null = null;
   if (to === 'returned') {
@@ -213,6 +235,12 @@ async function updateStatusAction(formData: FormData) {
     p_return_lines: returnLines,
   });
   if (rpcError) {
+    console.error('[admin/orders] adjust_inventory_for_order_status error', {
+      id,
+      fromStatus,
+      toStatus: status,
+      message: rpcError.message,
+    });
     return { ok: false, message: rpcError.message } as const;
   }
 

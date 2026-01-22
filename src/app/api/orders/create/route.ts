@@ -67,6 +67,20 @@ export async function POST(req: Request) {
     }
     const orderId = data as string;
 
+    // Generate a short, human-friendly order code (e.g. MIBL00001) via Postgres RPC.
+    // If this fails for any reason, we silently fall back to the UUID everywhere.
+    let shortCode: string | null = null;
+    try {
+      const { data: sc, error: scErr } = await supabase.rpc('generate_order_short_code', {
+        p_order_id: orderId,
+      });
+      if (!scErr && typeof sc === 'string' && sc.trim()) {
+        shortCode = sc.trim();
+      }
+    } catch (e) {
+      console.error('[orders/create] short code generation failed', e);
+    }
+
     // Upsert into email_list for future campaigns (non-blocking)
     try {
       const email = (customer.email || '').trim();
@@ -99,6 +113,21 @@ export async function POST(req: Request) {
       if (!RESEND_API_KEY) {
         console.warn('[orders/create] RESEND_API_KEY missing; skipping email send');
       } else {
+        // Read existing email sent flags for exactly-once behavior
+        let alreadyOwnerSent = false;
+        let alreadyCustomerSent = false;
+        try {
+          const { data: orderEmailFlags } = await getSupabaseServiceClient()
+            .from('orders')
+            .select('customer_email_sent_at, owner_email_sent_at')
+            .eq('id', orderId)
+            .maybeSingle();
+          alreadyOwnerSent = !!orderEmailFlags?.owner_email_sent_at;
+          alreadyCustomerSent = !!orderEmailFlags?.customer_email_sent_at;
+        } catch (e) {
+          console.error('[orders/create] failed to read email sent flags', e);
+        }
+
         // Pull line details for a proper summary
         const { data: lines } = await getSupabaseServiceClient()
           .from('order_lines')
@@ -122,10 +151,14 @@ export async function POST(req: Request) {
         const htmlBase = (greeting: string) => `
           <div style="max-width:640px;margin:0 auto;padding:16px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px">
             <h2 style="margin:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;color:#111827;">${greeting}</h2>
-            <p style="margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;color:#374151;">Order ID: <strong>#${orderId}</strong></p>
+            <p style="margin:0 0 8px 0;font-family:Arial,Helvetica,sans-serif;color:#374151;">Order ID: <strong>#${shortCode || orderId}</strong></p>
+            <p style="margin:0 0 4px 0;font-family:Arial,Helvetica,sans-serif;color:#374151;">Payment method: <strong>Cash on Delivery</strong></p>
+            <p style="margin:0 0 12px 0;font-family:Arial,Helvetica,sans-serif;color:#374151;">Amount payable on delivery: <strong>PKR ${total.toLocaleString()}</strong></p>
             <div style="margin:12px 0;padding:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px">
+              <p style="margin:0 0 4px 0;font-family:Arial,Helvetica,sans-serif;color:#4b5563;font-weight:600;">Delivery address</p>
               <p style="margin:0;font-family:Arial,Helvetica,sans-serif;color:#374151;">${customer.name}<br/>
-              ${customer.address}, ${customer.city}${customer.province_code ? ' ('+customer.province_code+')' : ''}<br/>
+              ${customer.address}<br/>
+              ${customer.city}${customer.province_code ? ' ('+customer.province_code+')' : ''}<br/>
               ${customer.phone}${customer.email ? ' · '+customer.email : ''}</p>
             </div>
             <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-top:8px">
@@ -155,10 +188,18 @@ export async function POST(req: Request) {
                 </tr>
               </tfoot>
             </table>
+            <div style="margin-top:16px;font-family:Arial,Helvetica,sans-serif;color:#374151;font-size:14px;">
+              <p style="margin:0 0 4px 0;font-weight:600;">What happens next?</p>
+              <ul style="margin:4px 0 0 18px;padding:0;color:#4b5563;">
+                <li style="margin-bottom:2px;">We may contact you on WhatsApp at <strong>${customer.phone}</strong> to confirm your order details.</li>
+                <li style="margin-bottom:2px;">Once confirmed, your order will be dispatched within <strong>24–48 hours</strong>.</li>
+                <li style="margin-bottom:2px;">Please keep the cash ready at the time of delivery.</li>
+              </ul>
+            </div>
             <p style="margin-top:16px;font-family:Arial,Helvetica,sans-serif;color:#6b7280;font-size:14px;">If you have any questions, simply reply to this email.</p>
           </div>`;
 
-        const sendEmailResend = async (payload: { to: string[]; subject: string; text: string; html: string }) => {
+        const sendEmailResend = async (payload: { to: string[]; subject: string; text: string; html: string }, context: string) => {
           const res = await fetch('https://api.resend.com/emails', {
             method: 'POST',
             headers: {
@@ -176,29 +217,65 @@ export async function POST(req: Request) {
           });
           const text = await res.text();
           if (!res.ok) {
-            console.error('[orders/create] Resend error', res.status, text);
+            console.error('[orders/create] Resend error', context, res.status, text);
             return { ok: false, status: res.status, body: text } as const;
           }
-          console.log('[orders/create] Resend accepted', text);
-          return { ok: true } as const;
+          console.log('[orders/create] Resend accepted', context, text);
+          let resendId: string | null = null;
+          try {
+            const parsed = JSON.parse(text);
+            if (parsed && parsed.id) resendId = String(parsed.id);
+          } catch {}
+          return { ok: true, id: resendId } as const;
         };
 
-        // Send admin email
-        await sendEmailResend({
-          to: [OWNER],
-          subject: `New order placed: ${orderId}`,
-          text: `New order ${orderId} by ${customer.name}, phone ${customer.phone}. Total: PKR ${total}.`,
-          html: htmlBase('New order received'),
-        });
+        // Send admin email (exactly-once based on owner_email_sent_at)
+        if (!alreadyOwnerSent) {
+          const ownerResult = await sendEmailResend({
+            to: [OWNER],
+            subject: `New Order Received — ${shortCode || orderId}`,
+            text: `New order ${shortCode || orderId} by ${customer.name}, phone ${customer.phone}. Total (Cash on Delivery): PKR ${total}.`,
+            html: `${htmlBase('New order received')}
+              <p style="max-width:640px;margin:8px auto 0 auto;font-family:Arial,Helvetica,sans-serif;color:#6b7280;font-size:13px;">
+                Open in admin: <a href="https://afalstore.com/admin/orders/${orderId}" style="color:#2563eb;">View order in dashboard</a>
+              </p>`,
+          }, `owner → ${OWNER}`);
+          if (ownerResult.ok) {
+            try {
+              await getSupabaseServiceClient()
+                .from('orders')
+                .update({
+                  owner_email_sent_at: new Date().toISOString(),
+                  owner_email_resend_id: ownerResult.id || null,
+                })
+                .eq('id', orderId);
+            } catch (e) {
+              console.error('[orders/create] failed to update owner email sent flags', e);
+            }
+          }
+        }
 
-        // Customer confirmation
-        if (customer.email) {
-          await sendEmailResend({
+        // Customer confirmation (only if email exists and not already sent)
+        if (customer.email && !alreadyCustomerSent) {
+          const customerResult = await sendEmailResend({
             to: [String(customer.email)],
-            subject: `Thank you for your order (${orderId})`,
-            text: `Thank you for your order. Your order ID is ${orderId}. Total: PKR ${total}.`,
+            subject: `Order Confirmed — ${shortCode || orderId} (COD)`,
+            text: `Thank you for your order. Your order ID is ${shortCode || orderId}. Payment method: Cash on Delivery. Amount payable on delivery: PKR ${total}. We may contact you on WhatsApp at ${customer.phone} to confirm your order. Once confirmed, your order will be dispatched within 24–48 hours. Please keep the cash ready at the time of delivery.`,
             html: htmlBase('Thank you for your order'),
-          });
+          }, `customer → ${String(customer.email)}`);
+          if (customerResult.ok) {
+            try {
+              await getSupabaseServiceClient()
+                .from('orders')
+                .update({
+                  customer_email_sent_at: new Date().toISOString(),
+                  customer_email_resend_id: customerResult.id || null,
+                })
+                .eq('id', orderId);
+            } catch (e) {
+              console.error('[orders/create] failed to update customer email sent flags', e);
+            }
+          }
         }
       }
     } catch (e) {
@@ -331,7 +408,9 @@ export async function POST(req: Request) {
       console.error('[orders/create] FB CAPI exception', e);
     }
     // Always respond with success JSON when order is created
-    return NextResponse.json({ ok: true, order_id: orderId }, { status: 201 });
+    // order_id stays as the UUID (for tracking/deduplication), and we return
+    // the human-friendly short code separately for UI display.
+    return NextResponse.json({ ok: true, order_id: orderId, order_short_code: shortCode }, { status: 201 });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || 'Unknown error' }, { status: 500 });
   }
