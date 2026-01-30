@@ -2,7 +2,7 @@ import { requireAdmin } from '@/lib/auth';
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
 import Link from 'next/link';
 
-type Search = { q?: string; status?: string; productId?: string; from?: string; to?: string; page?: string };
+type Search = { q?: string; status?: string; productId?: string; courierId?: string; from?: string; to?: string; page?: string };
 
 async function fetchOrders(search: Search) {
   const supabase = getSupabaseServerClient();
@@ -13,7 +13,7 @@ async function fetchOrders(search: Search) {
 
   let query = supabase
     .from('orders')
-    .select('id, short_code, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount, discount_total', { count: 'exact' })
+    .select('id, short_code, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount, discount_total, courier_id, courier_tracking_number, couriers(id, name)', { count: 'exact' })
     .order('created_at', { ascending: false });
 
   if (search.status && search.status !== 'all') {
@@ -30,6 +30,10 @@ async function fetchOrders(search: Search) {
     const q = `%${search.q.trim()}%`;
     // Search by name, email or phone
     query = query.or(`customer_name.ilike.${q},email.ilike.${q},phone.ilike.${q}`);
+  }
+  // Filter by courier
+  if (search.courierId && search.courierId !== 'all') {
+    query = query.eq('courier_id', search.courierId);
   }
   // Filter by product via order_lines -> variants.product_id
   if (search.productId && search.productId !== 'all') {
@@ -93,6 +97,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
   const currentStatus = searchParams?.status ?? 'all';
   const q = searchParams?.q ?? '';
   const currentProduct = searchParams?.productId ?? 'all';
+  const currentCourier = searchParams?.courierId ?? 'all';
   const currentFrom = searchParams?.from ?? '';
   const currentTo = searchParams?.to ?? '';
   const currentPage = Math.max(1, Number(searchParams?.page || '1') || 1);
@@ -104,6 +109,13 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
     .from('products')
     .select('id, name')
     .order('created_at', { ascending: false });
+
+  // Fetch couriers for the dropdown
+  const { data: couriers } = await supabase
+    .from('couriers')
+    .select('id, name')
+    .eq('is_active', true)
+    .order('name', { ascending: true });
 
   return (
     <div className="space-y-6">
@@ -136,6 +148,15 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
             <option value="all">All products</option>
             {(products ?? []).map((p: any) => (
               <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm">Courier</label>
+          <select name="courierId" defaultValue={currentCourier} className="border rounded px-3 py-2 min-w-[150px]">
+            <option value="all">All couriers</option>
+            {(couriers ?? []).map((c: any) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
         </div>
@@ -193,6 +214,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
               <th className="py-2 pr-4">Phone</th>
               <th className="py-2 pr-4">City</th>
               <th className="py-2 pr-4">Status</th>
+              <th className="py-2 pr-4">Courier</th>
               <th className="py-2 pr-4">Total</th>
               <th className="py-2 pr-4">Created</th>
             </tr>
@@ -207,6 +229,12 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
                 <td className="py-2 pr-4">{o.phone}</td>
                 <td className="py-2 pr-4">{o.city} {o.province_code ? `(${o.province_code})` : ''}</td>
                 <td className="py-2 pr-4 capitalize">{o.status}</td>
+                <td className="py-2 pr-4">
+                  {(o as any).couriers?.name || '—'}
+                  {(o as any).courier_tracking_number && (
+                    <div className="text-xs text-gray-500">{(o as any).courier_tracking_number}</div>
+                  )}
+                </td>
                 <td className="py-2 pr-4">{Number(o.total).toLocaleString()} PKR</td>
                 <td className="py-2 pr-4">
                   {new Date(o.created_at).toLocaleString('en-PK', {
@@ -217,7 +245,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
             ))}
             {orders.length === 0 && (
               <tr>
-                <td className="py-4 text-gray-500" colSpan={8}>No orders found.</td>
+                <td className="py-4 text-gray-500" colSpan={10}>No orders found.</td>
               </tr>
             )}
           </tbody>
@@ -234,6 +262,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
                 href={`/admin/orders?${new URLSearchParams({
                   ...(currentStatus !== 'all' ? { status: String(currentStatus) } : {}),
                   ...(currentProduct !== 'all' ? { productId: String(currentProduct) } : {}),
+                  ...(currentCourier !== 'all' ? { courierId: String(currentCourier) } : {}),
                   ...(q ? { q: String(q) } : {}),
                   ...(currentFrom ? { from: String(currentFrom) } : {}),
                   ...(currentTo ? { to: String(currentTo) } : {}),
@@ -249,6 +278,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
                 href={`/admin/orders?${new URLSearchParams({
                   ...(currentStatus !== 'all' ? { status: String(currentStatus) } : {}),
                   ...(currentProduct !== 'all' ? { productId: String(currentProduct) } : {}),
+                  ...(currentCourier !== 'all' ? { courierId: String(currentCourier) } : {}),
                   ...(q ? { q: String(q) } : {}),
                   ...(currentFrom ? { from: String(currentFrom) } : {}),
                   ...(currentTo ? { to: String(currentTo) } : {}),

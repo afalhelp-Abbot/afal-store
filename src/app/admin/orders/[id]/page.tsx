@@ -1,13 +1,14 @@
 import { requireAdmin } from '@/lib/auth';
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
 import Link from 'next/link';
-import { revalidatePath } from 'next/cache';
+import { StatusFormClient } from './StatusFormClient';
+import { CourierFormClient } from './CourierFormClient';
 
 async function fetchOrder(id: string) {
   const supabase = getSupabaseServerClient();
   const { data: order, error } = await supabase
     .from('orders')
-    .select('id, short_code, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount, discount_total, promo_name')
+    .select('id, short_code, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount, discount_total, promo_name, courier_id, courier_tracking_number, courier_notes, couriers(id, name)')
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;
@@ -44,6 +45,14 @@ export default async function OrderDetailPage({ params }: { params: { id: string
 
   const { order, items, total, subtotal, shipping, discount } = result as any;
 
+  // Fetch couriers for dropdown
+  const supabase = getSupabaseServerClient();
+  const { data: couriers } = await supabase
+    .from('couriers')
+    .select('id, name')
+    .eq('is_active', true)
+    .order('name', { ascending: true });
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -63,6 +72,22 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               <div className="font-medium capitalize">{order.status}</div>
             </div>
           </div>
+
+          {/* Courier Info Display */}
+          {(order.courier_id || order.courier_tracking_number) && (
+            <div className="bg-gray-50 rounded p-3">
+              <h2 className="font-medium mb-2">Courier</h2>
+              <div className="text-sm space-y-1">
+                <div><span className="text-gray-600">Courier:</span> {order.couriers?.name || '—'}</div>
+                {order.courier_tracking_number && (
+                  <div><span className="text-gray-600">CN/Tracking:</span> {order.courier_tracking_number}</div>
+                )}
+                {order.courier_notes && (
+                  <div><span className="text-gray-600">Notes:</span> {order.courier_notes}</div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div>
             <h2 className="font-medium mb-2">Customer</h2>
@@ -128,7 +153,18 @@ export default async function OrderDetailPage({ params }: { params: { id: string
 
         <div className="border rounded p-4 space-y-4">
           <h2 className="font-medium">Update Status</h2>
-          <StatusForm id={String(order.id)} currentStatus={String(order.status)} items={items as any[]} />
+          <StatusFormClient id={String(order.id)} currentStatus={String(order.status)} items={items as any[]} />
+
+          <div className="border-t pt-4">
+            <h3 className="font-medium mb-2">Shipping / Courier</h3>
+            <CourierFormClient
+              orderId={String(order.id)}
+              currentCourierId={order.courier_id || ''}
+              currentTrackingNumber={order.courier_tracking_number || ''}
+              currentNotes={order.courier_notes || ''}
+              couriers={(couriers ?? []) as any[]}
+            />
+          </div>
 
           <div className="border-t pt-4">
             <h3 className="font-medium mb-2">Actions</h3>
@@ -139,153 +175,5 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         </div>
       </div>
     </div>
-  );
-}
-
-async function updateStatusAction(formData: FormData) {
-  'use server';
-  const id = String(formData.get('id') || '');
-  const status = String(formData.get('status') || '');
-  await requireAdmin();
-
-  if (!id || !status) {
-    return { ok: false, message: 'Missing id or status' } as const;
-  }
-
-  const allowed = ['pending', 'packed', 'shipped', 'return_in_transit', 'cancelled', 'returned'];
-  if (!allowed.includes(status)) {
-    return { ok: false, message: 'Invalid status' } as const;
-  }
-
-  const supabase = getSupabaseServerClient();
-
-  // Fetch current status for transition validation
-  const { data: existing, error: fetchErr } = await supabase
-    .from('orders')
-    .select('id, status')
-    .eq('id', id)
-    .maybeSingle();
-  if (fetchErr) return { ok: false, message: fetchErr.message } as const;
-  const fromStatus = String(existing?.status || 'pending');
-
-  // If no change, do nothing
-  if (fromStatus === status) {
-    return { ok: true } as const;
-  }
-
-  const from = fromStatus.toLowerCase();
-  const to = status.toLowerCase();
-
-  // Enforce high-level transition rules
-  // - shipped -> cancelled: not allowed (no inventory change should happen)
-  // - returned -> anything else: not allowed (terminal state)
-  if (from === 'shipped' && to === 'cancelled') {
-    return { ok: false, message: 'Cannot change shipped orders back to cancelled.' } as const;
-  }
-  if (from === 'returned' && to !== 'returned') {
-    return { ok: false, message: `Cannot move returned orders to ${to}.` } as const;
-  }
-  // Returned can only be set from shipped or return_in_transit
-  if (to === 'returned' && !(from === 'shipped' || from === 'return_in_transit')) {
-    return { ok: false, message: 'Returned status is only allowed from Shipped or Return in transit.' } as const;
-  }
-
-  // Simple transition: pending -> cancelled. We release reserved stock via
-  // a dedicated Postgres function and then update the order status.
-  if (from === 'pending' && to === 'cancelled') {
-    const { error: relErr } = await supabase.rpc('release_reserved_for_cancel', {
-      p_order_id: id,
-    });
-    if (relErr) {
-      return { ok: false, message: relErr.message } as const;
-    }
-
-    const { error: updErr } = await supabase
-      .from('orders')
-      .update({ status })
-      .eq('id', id);
-    if (updErr) {
-      return { ok: false, message: updErr.message } as const;
-    }
-
-    revalidatePath(`/admin/orders/${id}`);
-    return { ok: true } as const;
-  }
-
-  // Collect per-line return conditions when marking as returned (from shipped or return_in_transit)
-  let returnLines: Record<string, { condition: 'resellable' | 'not_resellable' }> | null = null;
-  if (to === 'returned') {
-    returnLines = {};
-    for (const [key, value] of Array.from(formData.entries())) {
-      const match = /^item\[(.+)\]\[return_condition\]$/.exec(String(key));
-      if (!match) continue;
-      const lineId = match[1];
-      const cond = String(value);
-      if (cond === 'resellable' || cond === 'not_resellable') {
-        returnLines[lineId] = { condition: cond };
-      }
-    }
-  }
-
-  // Delegate all inventory math + status update to Postgres RPC
-  const { error: rpcError } = await supabase.rpc('adjust_inventory_for_order_status', {
-    p_order_id: id,
-    p_from_status: fromStatus,
-    p_to_status: status,
-    p_return_lines: returnLines,
-  });
-  if (rpcError) {
-    console.error('[admin/orders] adjust_inventory_for_order_status error', {
-      id,
-      fromStatus,
-      toStatus: status,
-      message: rpcError.message,
-    });
-    return { ok: false, message: rpcError.message } as const;
-  }
-
-  revalidatePath(`/admin/orders/${id}`);
-  return { ok: true } as const;
-}
-
-function StatusForm({ id, currentStatus, items }: { id: string; currentStatus: string; items: any[] }) {
-  return (
-    <form action={updateStatusAction} className="space-y-3">
-      <input type="hidden" name="id" value={id} />
-      <div>
-        <label className="block text-sm">Status</label>
-        <select name="status" defaultValue={currentStatus} className="border rounded px-3 py-2 w-full">
-          <option value="pending">Pending</option>
-          <option value="packed">Packed</option>
-          <option value="shipped">Shipped</option>
-          <option value="return_in_transit">Return in transit</option>
-          <option value="cancelled">Cancelled</option>
-          <option value="returned">Returned</option>
-        </select>
-      </div>
-      <div className="space-y-2 text-sm border-t pt-3">
-        <div className="font-medium">Return condition (used when marking as Returned)</div>
-        <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
-          {items.map((it: any) => (
-            <div key={it.id} className="flex items-center justify-between gap-2">
-              <div className="flex-1">
-                <div className="font-mono text-xs">{it.variants?.sku || it.variant_id}</div>
-                <div className="text-gray-600 text-xs">Qty: {it.qty}</div>
-              </div>
-              <select
-                name={`item[${it.id}][return_condition]`}
-                defaultValue={it.return_condition || ''}
-                className="border rounded px-2 py-1 text-xs"
-              >
-                <option value="">--</option>
-                <option value="resellable">Resellable</option>
-                <option value="not_resellable">Not resellable</option>
-              </select>
-            </div>
-          ))}
-        </div>
-      </div>
-      <button className="bg-black text-white rounded px-4 py-2">Save</button>
-    </form>
   );
 }
