@@ -47,6 +47,7 @@ export function StatusFormClient({ id, currentStatus, items }: Props) {
           <option value="pending">Pending</option>
           <option value="packed">Packed</option>
           <option value="shipped">Shipped</option>
+          <option value="delivered">Delivered</option>
           <option value="return_in_transit">Return in transit</option>
           <option value="cancelled">Cancelled</option>
           <option value="returned">Returned</option>

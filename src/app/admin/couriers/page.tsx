@@ -14,6 +14,7 @@ type Courier = {
   website: string | null;
   notes: string | null;
   is_active: boolean;
+  api_type: string | null;
   created_at: string;
 };
 
@@ -35,6 +36,7 @@ async function createCourierAction(formData: FormData) {
     website: formData.get('website') || null,
     notes: formData.get('notes') || null,
     is_active: formData.get('is_active') === 'true',
+    api_type: formData.get('api_type') || 'manual',
   });
 
   if (error) return { ok: false, message: error.message };
@@ -63,6 +65,7 @@ async function updateCourierAction(formData: FormData) {
       website: formData.get('website') || null,
       notes: formData.get('notes') || null,
       is_active: formData.get('is_active') === 'true',
+      api_type: formData.get('api_type') || 'manual',
       updated_at: new Date().toISOString(),
     })
     .eq('id', id);
@@ -113,6 +116,9 @@ export default async function CouriersPage({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Couriers</h1>
+        <Link href="/admin/couriers/city-mappings" className="text-sm underline">
+          City Mappings →
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -128,8 +134,8 @@ export default async function CouriersPage({
                   <tr className="text-left border-b">
                     <th className="py-2 pr-4">Name</th>
                     <th className="py-2 pr-4">Code</th>
+                    <th className="py-2 pr-4">API Type</th>
                     <th className="py-2 pr-4">Phone</th>
-                    <th className="py-2 pr-4">Email</th>
                     <th className="py-2 pr-4">Active</th>
                     <th className="py-2 pr-4">Actions</th>
                   </tr>
@@ -139,8 +145,12 @@ export default async function CouriersPage({
                     <tr key={c.id} className={`border-b ${!c.is_active ? 'opacity-50' : ''}`}>
                       <td className="py-2 pr-4 font-medium">{c.name}</td>
                       <td className="py-2 pr-4 text-gray-600">{c.code || '—'}</td>
+                      <td className="py-2 pr-4">
+                        <span className={`px-2 py-0.5 rounded text-xs ${c.api_type === 'leopards' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-600'}`}>
+                          {c.api_type || 'manual'}
+                        </span>
+                      </td>
                       <td className="py-2 pr-4">{c.phone || '—'}</td>
-                      <td className="py-2 pr-4">{c.email || '—'}</td>
                       <td className="py-2 pr-4">
                         <span className={`px-2 py-0.5 rounded text-xs ${c.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
                           {c.is_active ? 'Active' : 'Inactive'}
@@ -265,6 +275,20 @@ export default async function CouriersPage({
                 rows={3}
                 placeholder="Special instructions..."
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">API Integration</label>
+              <select
+                name="api_type"
+                defaultValue={editingCourier?.api_type || 'manual'}
+                className="border rounded px-3 py-2 w-full"
+              >
+                <option value="manual">Manual (no API)</option>
+                <option value="leopards">Leopards</option>
+                <option value="daewoo">Daewoo</option>
+                <option value="tcs">TCS</option>
+              </select>
             </div>
 
             <div className="flex items-center gap-2">

@@ -13,7 +13,7 @@ export async function updateStatusAction(formData: FormData) {
     return { ok: false, message: 'Missing id or status' } as const;
   }
 
-  const allowed = ['pending', 'packed', 'shipped', 'return_in_transit', 'cancelled', 'returned'];
+  const allowed = ['pending', 'packed', 'shipped', 'delivered', 'return_in_transit', 'cancelled', 'returned'];
   if (!allowed.includes(status)) {
     return { ok: false, message: 'Invalid status' } as const;
   }
@@ -41,11 +41,14 @@ export async function updateStatusAction(formData: FormData) {
   if (from === 'shipped' && to === 'cancelled') {
     return { ok: false, message: 'Cannot change shipped orders back to cancelled.' } as const;
   }
+  if (from === 'delivered' && to === 'cancelled') {
+    return { ok: false, message: 'Cannot cancel delivered orders.' } as const;
+  }
   if (from === 'returned' && to !== 'returned') {
     return { ok: false, message: `Cannot move returned orders to ${to}.` } as const;
   }
-  if (to === 'returned' && !(from === 'shipped' || from === 'return_in_transit')) {
-    return { ok: false, message: 'Returned status is only allowed from Shipped or Return in transit.' } as const;
+  if (to === 'returned' && !(from === 'shipped' || from === 'delivered' || from === 'return_in_transit')) {
+    return { ok: false, message: 'Returned status is only allowed from Shipped, Delivered, or Return in transit.' } as const;
   }
 
   // Simple transition: pending -> cancelled
@@ -87,6 +90,8 @@ export async function updateStatusAction(formData: FormData) {
   // For transitions that don't need inventory changes, just update status directly
   const noInventoryTransitions = [
     'shipped->return_in_transit',
+    'shipped->delivered',
+    'delivered->return_in_transit',
     'pending->packed',
     'packed->shipped',
     'packed->pending',

@@ -3,12 +3,13 @@ import { getSupabaseServerClient } from '@/lib/supabaseServer';
 import Link from 'next/link';
 import { StatusFormClient } from './StatusFormClient';
 import { CourierFormClient } from './CourierFormClient';
+import { LeopardsBookingClient } from './LeopardsBookingClient';
 
 async function fetchOrder(id: string) {
   const supabase = getSupabaseServerClient();
   const { data: order, error } = await supabase
     .from('orders')
-    .select('id, short_code, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount, discount_total, promo_name, courier_id, courier_tracking_number, courier_notes, couriers(id, name)')
+    .select('id, short_code, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount, discount_total, promo_name, courier_id, courier_tracking_number, courier_notes, courier_booked_at, couriers(id, name, api_type)')
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;
@@ -49,7 +50,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
   const supabase = getSupabaseServerClient();
   const { data: couriers } = await supabase
     .from('couriers')
-    .select('id, name')
+    .select('id, name, api_type')
     .eq('is_active', true)
     .order('name', { ascending: true });
 
@@ -165,6 +166,20 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               couriers={(couriers ?? []) as any[]}
             />
           </div>
+
+          {/* Leopards Booking */}
+          {order.courier_id && (order.couriers as any)?.api_type === 'leopards' && (
+            <div className="border-t pt-4">
+              <h3 className="font-medium mb-2">Courier Booking</h3>
+              <LeopardsBookingClient
+                orderId={String(order.id)}
+                courierApiType={(order.couriers as any)?.api_type || null}
+                hasTrackingNumber={!!order.courier_tracking_number}
+                trackingNumber={order.courier_tracking_number || null}
+                bookedAt={order.courier_booked_at || null}
+              />
+            </div>
+          )}
 
           <div className="border-t pt-4">
             <h3 className="font-medium mb-2">Actions</h3>
