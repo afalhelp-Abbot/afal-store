@@ -1,8 +1,9 @@
 import { requireAdmin } from '@/lib/auth';
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
 import Link from 'next/link';
+import { StatusFilterDropdown } from './StatusFilterDropdown';
 
-type Search = { q?: string; status?: string; productId?: string; courierId?: string; from?: string; to?: string; page?: string };
+type Search = { q?: string; status?: string | string[]; productId?: string; courierId?: string; from?: string; to?: string; page?: string };
 
 async function fetchOrders(search: Search) {
   const supabase = getSupabaseServerClient();
@@ -17,7 +18,11 @@ async function fetchOrders(search: Search) {
     .order('created_at', { ascending: false });
 
   if (search.status && search.status !== 'all') {
-    query = query.eq('status', search.status);
+    const statuses = Array.isArray(search.status) ? search.status : search.status.split(',');
+    const filtered = statuses.filter(Boolean);
+    if (filtered.length > 0) {
+      query = query.in('status', filtered);
+    }
   }
   if (search.from) {
     // Interpret from/to as dates in local (Asia/Karachi) but store as UTC timestamps; here we compare on date string
@@ -94,7 +99,10 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
   const totalRevenue = orders
     .filter((o: any) => String(o.status).toLowerCase() !== 'cancelled')
     .reduce((sum, o: any) => sum + Number(o.total || 0), 0);
-  const currentStatus = searchParams?.status ?? 'all';
+  const statusParam = searchParams?.status;
+  const currentStatuses: string[] = statusParam 
+    ? (Array.isArray(statusParam) ? statusParam : statusParam.split(','))
+    : [];
   const q = searchParams?.q ?? '';
   const currentProduct = searchParams?.productId ?? 'all';
   const currentCourier = searchParams?.courierId ?? 'all';
@@ -131,16 +139,8 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
 
       <form className="flex flex-wrap items-end gap-3 border rounded p-4" action="/admin/orders" method="get">
         <div>
-          <label className="block text-sm">Status</label>
-          <select name="status" defaultValue={currentStatus} className="border rounded px-3 py-2">
-            <option value="all">All</option>
-            <option value="pending">Pending</option>
-            <option value="packed">Packed</option>
-            <option value="shipped">Shipped</option>
-            <option value="cancelled">Cancelled</option>
-            <option value="return_in_transit">Return in transit</option>
-            <option value="returned">Returned</option>
-          </select>
+          <label className="block text-sm mb-1">Status</label>
+          <StatusFilterDropdown currentStatuses={currentStatuses} />
         </div>
         <div>
           <label className="block text-sm">Product</label>
@@ -260,7 +260,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
             {currentPage > 1 && (
               <Link
                 href={`/admin/orders?${new URLSearchParams({
-                  ...(currentStatus !== 'all' ? { status: String(currentStatus) } : {}),
+                  ...(currentStatuses.length > 0 ? { status: currentStatuses.join(',') } : {}),
                   ...(currentProduct !== 'all' ? { productId: String(currentProduct) } : {}),
                   ...(currentCourier !== 'all' ? { courierId: String(currentCourier) } : {}),
                   ...(q ? { q: String(q) } : {}),
@@ -276,7 +276,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
             {currentPage < totalPages && (
               <Link
                 href={`/admin/orders?${new URLSearchParams({
-                  ...(currentStatus !== 'all' ? { status: String(currentStatus) } : {}),
+                  ...(currentStatuses.length > 0 ? { status: currentStatuses.join(',') } : {}),
                   ...(currentProduct !== 'all' ? { productId: String(currentProduct) } : {}),
                   ...(currentCourier !== 'all' ? { courierId: String(currentCourier) } : {}),
                   ...(q ? { q: String(q) } : {}),

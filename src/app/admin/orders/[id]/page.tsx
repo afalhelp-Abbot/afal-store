@@ -4,12 +4,13 @@ import Link from 'next/link';
 import { StatusFormClient } from './StatusFormClient';
 import { CourierFormClient } from './CourierFormClient';
 import { LeopardsBookingClient } from './LeopardsBookingClient';
+import { EditOrderClient } from './EditOrderClient';
 
 async function fetchOrder(id: string) {
   const supabase = getSupabaseServerClient();
   const { data: order, error } = await supabase
     .from('orders')
-    .select('id, short_code, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount, discount_total, promo_name, courier_id, courier_tracking_number, courier_notes, courier_booked_at, couriers(id, name, api_type)')
+    .select('id, short_code, status, customer_name, email, phone, address, city, province_code, created_at, shipping_amount, discount_total, promo_name, courier_id, courier_tracking_number, courier_notes, courier_booked_at, alternate_phone, notes, edit_version, couriers(id, name, api_type)')
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;
@@ -96,11 +97,43 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               <div className="font-medium">{order.customer_name}</div>
               <div>{order.email || '-'}</div>
               <div>{order.phone}</div>
+              {(order as any).alternate_phone && <div>Alt: {(order as any).alternate_phone}</div>}
               <div>{order.address}</div>
               <div>
                 {order.city} {order.province_code ? `(${order.province_code})` : ''}
               </div>
+              {(order as any).notes && <div className="mt-2 text-gray-600 italic">Notes: {(order as any).notes}</div>}
             </div>
+          </div>
+
+          {/* Edit Order Section */}
+          <div className="border-t pt-4">
+            <EditOrderClient
+              order={{
+                id: order.id,
+                status: order.status,
+                editVersion: (order as any).edit_version || 0,
+                customerName: order.customer_name,
+                phone: order.phone,
+                alternatePhone: (order as any).alternate_phone || '',
+                email: order.email || '',
+                address: order.address,
+                city: order.city,
+                notes: (order as any).notes || '',
+                discountTotal: Number(discount || 0),
+                shippingAmount: Number(shipping || 0),
+                courierTrackingNumber: order.courier_tracking_number || '',
+                courierBookedAt: order.courier_booked_at || '',
+                lines: items.map((it: any) => ({
+                  id: it.id,
+                  variantId: it.variant_id,
+                  sku: it.variants?.sku || it.variant_id,
+                  qty: it.qty,
+                  unitPrice: Number(it.unit_price),
+                  lineTotal: Number(it.line_total),
+                })),
+              }}
+            />
           </div>
 
           <div>
