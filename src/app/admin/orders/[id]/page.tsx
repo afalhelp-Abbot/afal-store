@@ -71,7 +71,22 @@ export default async function OrderDetailPage({ params }: { params: { id: string
             </div>
             <div>
               <div className="text-sm text-gray-600">Status</div>
-              <div className="font-medium capitalize">{order.status}</div>
+              {(() => {
+                const statusColors: Record<string, string> = {
+                  pending: 'bg-yellow-100 text-yellow-800',
+                  packed: 'bg-blue-100 text-blue-800',
+                  shipped: 'bg-purple-100 text-purple-800',
+                  delivered: 'bg-green-100 text-green-800',
+                  cancelled: 'bg-red-100 text-red-800',
+                  returned: 'bg-gray-100 text-gray-800',
+                };
+                const statusClass = statusColors[order.status?.toLowerCase()] || 'bg-gray-100 text-gray-800';
+                return (
+                  <span className={`inline-block px-3 py-1 text-sm font-medium rounded-full ${statusClass}`}>
+                    {order.status}
+                  </span>
+                );
+              })()}
             </div>
           </div>
 
@@ -93,13 +108,13 @@ export default async function OrderDetailPage({ params }: { params: { id: string
 
           <div>
             <h2 className="font-medium mb-2">Customer</h2>
-            <div className="text-sm">
-              <div className="font-medium">{order.customer_name}</div>
+            <div className="text-base">
+              <div className="font-semibold text-lg">{order.customer_name}</div>
               <div>{order.email || '-'}</div>
-              <div>{order.phone}</div>
+              <div className="font-medium">{order.phone}</div>
               {(order as any).alternate_phone && <div>Alt: {(order as any).alternate_phone}</div>}
-              <div>{order.address}</div>
-              <div>
+              <div className="font-medium">{order.address}</div>
+              <div className="font-medium">
                 {order.city} {order.province_code ? `(${order.province_code})` : ''}
               </div>
               {(order as any).notes && <div className="mt-2 text-gray-600 italic">Notes: {(order as any).notes}</div>}
@@ -150,34 +165,34 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                 </thead>
                 <tbody>
                   {items.map((it: any) => (
-                    <tr key={it.id} className="border-b">
-                      <td className="py-2 pr-4">{it.variants?.sku || it.variant_id}</td>
-                      <td className="py-2 pr-4">{it.qty}</td>
-                      <td className="py-2 pr-4">{Number(it.unit_price).toLocaleString()} PKR</td>
-                      <td className="py-2 pr-4">{Number(it.line_total).toLocaleString()} PKR</td>
+                    <tr key={it.id} className="border-b text-lg font-bold text-blue-600">
+                      <td className="py-3 pr-4">{it.variants?.sku || it.variant_id}</td>
+                      <td className="py-3 pr-4">{it.qty}</td>
+                      <td className="py-3 pr-4">{Number(it.unit_price).toLocaleString()} PKR</td>
+                      <td className="py-3 pr-4">{Number(it.line_total).toLocaleString()} PKR</td>
                     </tr>
                   ))}
                 </tbody>
-                <tfoot>
+                <tfoot className="text-base">
                   <tr>
-                    <td className="py-2 pr-4" colSpan={3}>Items subtotal</td>
-                    <td className="py-2 pr-4">{Number(subtotal || 0).toLocaleString()} PKR</td>
+                    <td className="py-3 pr-4" colSpan={3}>Items subtotal</td>
+                    <td className="py-3 pr-4">{Number(subtotal || 0).toLocaleString()} PKR</td>
                   </tr>
                   <tr>
-                    <td className="py-2 pr-4" colSpan={3}>Shipping</td>
-                    <td className="py-2 pr-4">{Number(shipping || 0).toLocaleString()} PKR</td>
+                    <td className="py-3 pr-4" colSpan={3}>Shipping</td>
+                    <td className="py-3 pr-4">{Number(shipping || 0).toLocaleString()} PKR</td>
                   </tr>
                   {Number(discount || 0) > 0 && (
                     <tr>
-                      <td className="py-2 pr-4 text-green-700" colSpan={3}>
+                      <td className="py-3 pr-4 text-green-700" colSpan={3}>
                         {order.promo_name || 'Promotion discount'}
                       </td>
-                      <td className="py-2 pr-4 text-green-700">- {Number(discount || 0).toLocaleString()} PKR</td>
+                      <td className="py-3 pr-4 text-green-700">- {Number(discount || 0).toLocaleString()} PKR</td>
                     </tr>
                   )}
-                  <tr>
-                    <td className="py-2 pr-4 font-medium" colSpan={3}>Total</td>
-                    <td className="py-2 pr-4 font-medium">{Number(total || 0).toLocaleString()} PKR</td>
+                  <tr className="font-bold text-lg">
+                    <td className="py-3 pr-4" colSpan={3}>Total</td>
+                    <td className="py-3 pr-4">{Number(total || 0).toLocaleString()} PKR</td>
                   </tr>
                 </tfoot>
               </table>

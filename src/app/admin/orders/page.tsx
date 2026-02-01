@@ -203,32 +203,50 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
           </div>
         </div>
       )}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
         <table className="min-w-full text-sm">
-          <thead>
+          <thead className="sticky top-0 bg-white shadow-sm z-10">
             <tr className="text-left border-b">
-              <th className="py-2 pr-4">#</th>
-              <th className="py-2 pr-4">Order</th>
-              <th className="py-2 pr-4">Customer</th>
-              <th className="py-2 pr-4">Email</th>
-              <th className="py-2 pr-4">Phone</th>
-              <th className="py-2 pr-4">City</th>
-              <th className="py-2 pr-4">Status</th>
-              <th className="py-2 pr-4">Courier</th>
-              <th className="py-2 pr-4">Total</th>
-              <th className="py-2 pr-4">Created</th>
+              <th className="py-2 pr-4 bg-white">#</th>
+              <th className="py-2 pr-4 bg-white">Order</th>
+              <th className="py-2 pr-4 bg-white">Customer</th>
+              <th className="py-2 pr-4 bg-white">Created</th>
+              <th className="py-2 pr-4 bg-white">Phone</th>
+              <th className="py-2 pr-2 bg-white">City</th>
+              <th className="py-2 pr-4 bg-white">Status</th>
+              <th className="py-2 pr-4 bg-white">Courier</th>
+              <th className="py-2 pr-4 bg-white">Total</th>
+              <th className="py-2 pr-4 bg-white">Email</th>
             </tr>
           </thead>
           <tbody>
-            {orders.map((o: any, index: number) => (
-              <tr key={o.id} className="border-b hover:bg-gray-50">
+            {orders.map((o: any, index: number) => {
+              const statusColors: Record<string, string> = {
+                pending: 'bg-yellow-100 text-yellow-800',
+                packed: 'bg-blue-100 text-blue-800',
+                shipped: 'bg-purple-100 text-purple-800',
+                delivered: 'bg-green-100 text-green-800',
+                cancelled: 'bg-red-100 text-red-800',
+                returned: 'bg-gray-100 text-gray-800',
+              };
+              const statusClass = statusColors[o.status?.toLowerCase()] || 'bg-gray-100 text-gray-800';
+              return (
+              <tr key={o.id} className={`border-b hover:bg-blue-50 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                 <td className="py-2 pr-4">{(currentPage - 1) * pageSize + index + 1}</td>
-                <td className="py-2 pr-4"><Link className="underline" href={`/admin/orders/${o.id}`}>#{o.short_code || o.id}</Link></td>
+                <td className="py-2 pr-4"><Link className="text-blue-600 font-semibold hover:underline" href={`/admin/orders/${o.id}`}>#{o.short_code || o.id}</Link></td>
                 <td className="py-2 pr-4">{o.customer_name}</td>
-                <td className="py-2 pr-4">{o.email || '-'}</td>
+                <td className="py-2 pr-4 whitespace-nowrap">
+                  {new Date(o.created_at).toLocaleString('en-PK', {
+                    timeZone: 'Asia/Karachi',
+                  })}
+                </td>
                 <td className="py-2 pr-4">{o.phone}</td>
-                <td className="py-2 pr-4">{o.city} {o.province_code ? `(${o.province_code})` : ''}</td>
-                <td className="py-2 pr-4 capitalize">{o.status}</td>
+                <td className="py-2 pr-2">{o.city} {o.province_code ? `(${o.province_code})` : ''}</td>
+                <td className="py-2 pr-4">
+                  <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full ${statusClass}`}>
+                    {o.status}
+                  </span>
+                </td>
                 <td className="py-2 pr-4">
                   {(o as any).couriers?.name || '—'}
                   {(o as any).courier_tracking_number && (
@@ -236,13 +254,9 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
                   )}
                 </td>
                 <td className="py-2 pr-4">{Number(o.total).toLocaleString()} PKR</td>
-                <td className="py-2 pr-4">
-                  {new Date(o.created_at).toLocaleString('en-PK', {
-                    timeZone: 'Asia/Karachi',
-                  })}
-                </td>
+                <td className="py-2 pr-4">{o.email || '-'}</td>
               </tr>
-            ))}
+            )})}
             {orders.length === 0 && (
               <tr>
                 <td className="py-4 text-gray-500" colSpan={10}>No orders found.</td>
