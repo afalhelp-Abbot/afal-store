@@ -95,8 +95,11 @@ export async function bookWithLeopardsAction(formData: FormData) {
       error_message: result.status !== 1 ? result.message : null,
     });
 
+    console.log('[Leopards] Booking response:', JSON.stringify(result, null, 2));
+
     if (result.status !== 1 || !result.packet_list?.length) {
-      return { ok: false, message: result.message || 'Booking failed - no tracking number returned' } as const;
+      const errorDetail = result.error || result.message || 'No tracking number returned';
+      return { ok: false, message: `Booking failed: ${errorDetail}` } as const;
     }
 
     const trackingNumber = result.packet_list[0].track_number;
