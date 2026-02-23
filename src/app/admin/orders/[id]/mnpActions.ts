@@ -199,7 +199,6 @@ export async function syncMnpStatusAction(formData: FormData) {
         .from('orders')
         .update({
           status: newStatus,
-          updated_at: new Date().toISOString(),
         })
         .eq('id', orderId);
 
