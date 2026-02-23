@@ -37,6 +37,15 @@ export async function syncMnpPaymentReportAction(formData: FormData) {
     return { ok: false, message: 'Date range is required' } as const;
   }
 
+  // Validate 31-day limit
+  const fromDate = new Date(dateFrom);
+  const toDate = new Date(dateTo);
+  const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
+  
+  if (daysDiff > 31) {
+    return { ok: false, message: `Date range is ${daysDiff} days. M&P API allows max 31 days per request.` } as const;
+  }
+
   // Get M&P credentials
   const username = process.env.MNP_USERNAME;
   const password = process.env.MNP_PASSWORD;
