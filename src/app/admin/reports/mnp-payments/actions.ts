@@ -92,7 +92,7 @@ export async function syncMnpPaymentReportAction(formData: FormData) {
     const data: PaymentReportResponse = Array.isArray(result) ? result[0] : result;
 
     if (!data || !data.Details || data.Details.length === 0) {
-      // Update sync log
+      // Update sync log with raw response for debugging
       if (syncLog) {
         await supabase
           .from('courier_sync_logs')
@@ -102,11 +102,12 @@ export async function syncMnpPaymentReportAction(formData: FormData) {
             total_orders: 0,
             orders_updated: 0,
             api_calls_made: 1,
+            errors: { raw_response: result, message: 'No Details array in response' },
           })
           .eq('id', syncLog.id);
       }
 
-      return { ok: true, recordsAdded: 0, message: 'No payment records found for this date range' } as const;
+      return { ok: true, recordsAdded: 0, message: 'No payment records found. Check Sync Logs for API response.' } as const;
     }
 
     // Insert payment records
