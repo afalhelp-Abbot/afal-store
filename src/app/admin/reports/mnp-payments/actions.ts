@@ -41,6 +41,8 @@ export async function syncMnpPaymentReportAction(formData: FormData) {
   const username = process.env.MNP_USERNAME;
   const password = process.env.MNP_PASSWORD;
   const locationId = process.env.MNP_LOCATION_ID;
+  const accountNo = process.env.MNP_ACCOUNT_NO;
+  const subAccountId = process.env.MNP_SUB_ACCOUNT_ID;
 
   if (!username || !password || !locationId) {
     return { ok: false, message: 'M&P credentials not configured' } as const;
@@ -64,12 +66,15 @@ export async function syncMnpPaymentReportAction(formData: FormData) {
 
   try {
     // Call M&P Payment Report API
+    // Note: M&P uses "Payment_Report" endpoint with specific date format
     const payload = {
       UserName: username,
       Password: password,
       dateFrom: `${dateFrom}T00:00:00.000Z`,
       dateTo: `${dateTo}T23:59:59.999Z`,
       locationID: locationId,
+      AccountNo: accountNo,
+      subAccountId: subAccountId || '0',
     };
 
     console.log('[M&P] Payment Report request:', JSON.stringify(payload, null, 2));
