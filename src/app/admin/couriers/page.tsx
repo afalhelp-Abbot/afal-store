@@ -146,7 +146,7 @@ export default async function CouriersPage({
                       <td className="py-2 pr-4 font-medium">{c.name}</td>
                       <td className="py-2 pr-4 text-gray-600">{c.code || '—'}</td>
                       <td className="py-2 pr-4">
-                        <span className={`px-2 py-0.5 rounded text-xs ${c.api_type === 'leopards' ? 'bg-orange-100 text-orange-800' : 'bg-gray-100 text-gray-600'}`}>
+                        <span className={`px-2 py-0.5 rounded text-xs ${c.api_type === 'leopards' ? 'bg-orange-100 text-orange-800' : c.api_type === 'mnp' ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}>
                           {c.api_type || 'manual'}
                         </span>
                       </td>
@@ -286,6 +286,7 @@ export default async function CouriersPage({
               >
                 <option value="manual">Manual (no API)</option>
                 <option value="leopards">Leopards</option>
+                <option value="mnp">M&P</option>
                 <option value="daewoo">Daewoo</option>
                 <option value="tcs">TCS</option>
               </select>

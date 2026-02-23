@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { StatusFormClient } from './StatusFormClient';
 import { CourierFormClient } from './CourierFormClient';
 import { LeopardsBookingClient } from './LeopardsBookingClient';
+import { MnpBookingClient } from './MnpBookingClient';
 import { EditOrderClient } from './EditOrderClient';
 
 async function fetchOrder(id: string) {
@@ -220,6 +221,20 @@ export default async function OrderDetailPage({ params }: { params: { id: string
             <div className="border-t pt-4">
               <h3 className="font-medium mb-2">Courier Booking</h3>
               <LeopardsBookingClient
+                orderId={String(order.id)}
+                courierApiType={(order.couriers as any)?.api_type || null}
+                hasTrackingNumber={!!order.courier_tracking_number}
+                trackingNumber={order.courier_tracking_number || null}
+                bookedAt={order.courier_booked_at || null}
+              />
+            </div>
+          )}
+
+          {/* M&P Booking */}
+          {order.courier_id && (order.couriers as any)?.api_type === 'mnp' && (
+            <div className="border-t pt-4">
+              <h3 className="font-medium mb-2">Courier Booking</h3>
+              <MnpBookingClient
                 orderId={String(order.id)}
                 courierApiType={(order.couriers as any)?.api_type || null}
                 hasTrackingNumber={!!order.courier_tracking_number}
