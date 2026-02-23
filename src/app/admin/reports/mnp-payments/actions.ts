@@ -67,15 +67,18 @@ export async function syncMnpPaymentReportAction(formData: FormData) {
   try {
     // Call M&P Payment Report API
     // Note: M&P uses "Payment_Report" endpoint with specific date format
-    const payload = {
+    // Try without subAccountId first, as it may not be required
+    const payload: Record<string, string> = {
       UserName: username,
       Password: password,
       dateFrom: `${dateFrom}T00:00:00.000Z`,
       dateTo: `${dateTo}T23:59:59.999Z`,
       locationID: locationId,
-      AccountNo: accountNo,
-      subAccountId: subAccountId || '0',
     };
+    
+    // Only add optional params if they exist
+    if (accountNo) payload.AccountNo = accountNo;
+    if (subAccountId && subAccountId !== '0') payload.subAccountId = subAccountId;
 
     console.log('[M&P] Payment Report request:', JSON.stringify(payload, null, 2));
 
