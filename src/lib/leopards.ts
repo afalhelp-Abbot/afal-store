@@ -39,12 +39,14 @@ export type BookPacketRequest = {
 
 export type BookPacketResponse = {
   status: number;
-  message: string;
+  message?: string;
+  error?: string | number;
+  track_number?: string;
+  slip_link?: string;
   packet_list?: Array<{
     track_number: string;
     slip_link?: string;
   }>;
-  error?: string;
 };
 
 export type TrackPacketResponse = {
@@ -84,21 +86,30 @@ export async function bookPacket(data: BookPacketRequest): Promise<BookPacketRes
   const payload = {
     api_key: apiKey,
     api_password: apiPassword,
-    booked_packet_weight: data.weight || 500,
-    booked_packet_no_piece: data.pieces || 1,
-    booked_packet_collect_amount: data.collectAmount,
+    // Basic info
+    booked_packet_weight: String(data.weight || 500),
+    booked_packet_no_piece: String(data.pieces || 1),
+    booked_packet_collect_amount: String(data.collectAmount),
     booked_packet_order_id: data.orderRefNumber,
-    origin_city: '789', // Lahore - update based on your origin
-    destination_city: data.consigneeCityCode,
-    shipment_name_eng: data.consigneeName,
-    shipment_email: '',
-    shipment_phone: data.consigneePhone,
-    shipment_address: data.consigneeAddress,
     booking_date: new Date().toISOString().split('T')[0],
-    special_handling: data.specialHandling || '',
-    shipment_type: data.productType || 'COD',
-    remarks: data.remarks || '',
+    // Shipper details (your store - origin)
+    shipment_name_eng: 'AFAL STORE',
+    shipment_email: 'AFALHELP@GMAIL.COM',
+    shipment_phone: '03213021912',
+    shipment_address: 'AFTAB HOUSE, ABBOT MGO STREET JAHRAN ROAD',
+    origin_city: '1', // Abbottabad
+    // Consignee details (customer - destination)
+    consignment_name_eng: data.consigneeName,
+    consignment_email: '',
+    consignment_phone: data.consigneePhone,
+    consignment_address: data.consigneeAddress,
+    destination_city: data.consigneeCityCode,
+    // Other required fields
+    special_instructions: data.remarks || 'Handle with care',
+    shipment_type_id: '10', // COD
   };
+
+  console.log('[Leopards] Full booking payload:', JSON.stringify(payload, null, 2));
 
   const response = await fetch(`${LEOPARDS_API_BASE}/bookPacket/`, {
     method: 'POST',
@@ -109,6 +120,7 @@ export async function bookPacket(data: BookPacketRequest): Promise<BookPacketRes
   });
 
   const result = await response.json();
+  console.log('[Leopards] API response:', JSON.stringify(result, null, 2));
   return result as BookPacketResponse;
 }
 

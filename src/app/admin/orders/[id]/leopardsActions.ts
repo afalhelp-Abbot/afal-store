@@ -67,10 +67,17 @@ export async function bookWithLeopardsAction(formData: FormData) {
 
   // Book with Leopards
   try {
+    console.log('[Leopards] Order data:', {
+      customer_name: order.customer_name,
+      phone: order.phone,
+      address: order.address,
+      city_code: cityMapping.courier_city_code,
+    });
+
     const result = await bookPacket({
-      consigneeName: order.customer_name,
-      consigneePhone: order.phone,
-      consigneeAddress: order.address,
+      consigneeName: order.customer_name || '',
+      consigneePhone: order.phone || '',
+      consigneeAddress: order.address || '',
       consigneeCityCode: cityMapping.courier_city_code || cityMapping.courier_city_name,
       orderRefNumber: order.short_code || orderId,
       collectAmount: total,
@@ -97,12 +104,13 @@ export async function bookWithLeopardsAction(formData: FormData) {
 
     console.log('[Leopards] Booking response:', JSON.stringify(result, null, 2));
 
-    if (result.status !== 1 || !result.packet_list?.length) {
+    // API returns track_number directly, not in packet_list
+    const trackingNumber = result.track_number || result.packet_list?.[0]?.track_number;
+
+    if (result.status !== 1 || !trackingNumber) {
       const errorDetail = result.error || result.message || 'No tracking number returned';
       return { ok: false, message: `Booking failed: ${errorDetail}` } as const;
     }
-
-    const trackingNumber = result.packet_list[0].track_number;
 
     // Update order with tracking number and booked timestamp (NOT changing status)
     const { error: updateErr } = await supabase

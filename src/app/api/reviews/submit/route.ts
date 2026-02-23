@@ -61,11 +61,11 @@ export async function POST(req: Request) {
     const submittedDigits = digitsOnly(phone);
     let matchedOrderId: string | null = null;
 
-    // Gather shipped orders and match by last-10 digits in memory to avoid relying on SQL regex support here
+    // Gather shipped/delivered orders and match by last-10 digits in memory to avoid relying on SQL regex support here
     const { data: shippedOrders } = await supabase
       .from('orders')
       .select('id, phone, status')
-      .eq('status', 'shipped')
+      .in('status', ['shipped', 'delivered'])
       .order('created_at', { ascending: false })
       .limit(500);
 
@@ -79,7 +79,7 @@ export async function POST(req: Request) {
     }
 
     if (candidateOrderIds.length === 0) {
-      return NextResponse.json({ ok: false, error: 'no_shipped_orders_for_phone' }, { status: 403 });
+      return NextResponse.json({ ok: false, error: 'no_shipped_or_delivered_orders_for_phone' }, { status: 403 });
     }
 
     // Fetch order lines/items for those orders

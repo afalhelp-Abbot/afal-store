@@ -570,12 +570,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
           </section>
         )}
 
-        {/* Secondary CTA after video / content sections */}
-        <div className="mt-4">
-          <a href="#lp-order-card-desktop" className="inline-flex items-center justify-center rounded-md bg-black px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2">
-            {ctaLabel}
-          </a>
-        </div>
+        {/* Secondary CTA removed - floating panel (mobile) and sticky sidebar (desktop) handle it */}
 
         {/* Hide floating CTA near reviews on mobile */}
         <div id="lp-bottom-sentinel" className="h-1"></div>
@@ -585,12 +580,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
         <div className="pt-4">
           <ReviewsSection productId={product.id} />
         </div>
-        {/* Secondary CTA after reviews */}
-        <div className="mt-4">
-          <a href="#lp-order-card-desktop" className="inline-flex items-center justify-center rounded-md bg-black px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2">
-            {ctaLabel}
-          </a>
-        </div>
+        {/* Secondary CTA removed - floating panel (mobile) and sticky sidebar (desktop) handle it */}
         {/* Mobile-only footer spacer with small text */}
         <div className="block lg:hidden text-center text-xs text-gray-400 py-28">afalstore</div>
       </div>

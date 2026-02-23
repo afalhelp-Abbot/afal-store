@@ -11,7 +11,7 @@
 
 const BUCKET = 'product-media';
 const MAX_IMAGE_MB = 10; // client-side hint, actual limit enforced by storage
-const MAX_VIDEO_MB = 50; // typical Supabase per-file cap on lower tiers
+const MAX_VIDEO_MB = 150; // increased for larger video uploads
 
 type Product = {
   id: string;
