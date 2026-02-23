@@ -226,20 +226,38 @@ export function getLatestMnpStatus(trackingResult: MnpTrackingResult): string | 
 
 /**
  * Map M&P tracking status to our order status
+ * 
+ * Important: RTS/Return maps to 'return_in_transit' (not 'returned')
+ * because 'returned' requires manual confirmation after inspection.
+ * Only explicit "Received Back" / "Delivered to Shipper" should map to 'returned'.
  */
 export function mapMnpStatusToOrderStatus(mnpStatus: string): string | null {
   const status = mnpStatus?.toLowerCase() || '';
   
-  if (status.includes('delivered') || status.includes('completed')) {
+  // Terminal: Delivered
+  if (status.includes('delivered') && !status.includes('shipper')) {
     return 'delivered';
   }
-  if (status.includes('return') || status.includes('rts')) {
+  
+  // Terminal: Received back at shipper (rare - most couriers don't have this)
+  if (status.includes('received back') || status.includes('delivered to shipper')) {
     return 'returned';
   }
+  
+  // In-transit return: RTS, Return initiated, etc. -> return_in_transit
+  // Requires manual confirmation to move to 'returned' after inspection
+  if (status.includes('return') || status.includes('rts')) {
+    return 'return_in_transit';
+  }
+  
+  // Cancelled
   if (status.includes('cancel')) {
     return 'cancelled';
   }
-  if (status.includes('booked') || status.includes('picked') || status.includes('transit') || status.includes('arrived') || status.includes('dispatched') || status.includes('out for delivery')) {
+  
+  // In-transit forward: various shipping statuses
+  if (status.includes('booked') || status.includes('picked') || status.includes('transit') || 
+      status.includes('arrived') || status.includes('dispatched') || status.includes('out for delivery')) {
     return 'shipped';
   }
   
