@@ -161,18 +161,44 @@ export async function getCities(): Promise<string[]> {
 }
 
 /**
- * Track a consignment by CN number
+ * M&P Tracking API response types
  */
-export async function trackConsignment(cnNumber: string): Promise<MnpTrackingResponse | null> {
-  const creds = getCredentials();
+export type MnpTrackingDetail = {
+  TrackingTagID: string;
+  TransactionTime: string;
+  Location: string | null;
+  TrackingStatus: string;
+  TrackingNarration: string;
+  Event: string | null;
+};
 
+export type MnpTrackingResult = {
+  isSuccess: string;
+  message: string;
+  tracking_Details?: Array<{
+    ConsignmentNumber: string;
+    OrderId: string;
+    OriginCity: string;
+    BookingDate: string;
+    CODAmount: string | null;
+    ConsigneeName: string;
+    DestinationCity: string;
+    DeliveryAddress: string;
+    CNTrackingDetail: MnpTrackingDetail[];
+  }>;
+};
+
+/**
+ * Track a consignment by CN number
+ * Uses the tracking.mulphilog.com.pk endpoint
+ */
+export async function trackConsignment(cnNumber: string): Promise<MnpTrackingResult | null> {
   const params = new URLSearchParams({
-    username: creds.username,
-    password: creds.password,
-    consignmentNo: cnNumber,
+    consignment: cnNumber,
+    id: '4',
   });
 
-  const response = await fetch(`${MNP_API_BASE}/Tracking/GetStatusByConsignmentNo?${params.toString()}`, {
+  const response = await fetch(`https://tracking.mulphilog.com.pk/api/CNTracking?${params.toString()}`, {
     method: 'GET',
   });
 
@@ -180,8 +206,43 @@ export async function trackConsignment(cnNumber: string): Promise<MnpTrackingRes
   console.log('[M&P] Tracking response:', JSON.stringify(result, null, 2));
 
   if (Array.isArray(result) && result.length > 0) {
-    return result[0] as MnpTrackingResponse;
+    return result[0] as MnpTrackingResult;
   }
 
+  return null;
+}
+
+/**
+ * Get the latest tracking status from M&P response
+ */
+export function getLatestMnpStatus(trackingResult: MnpTrackingResult): string | null {
+  const details = trackingResult.tracking_Details?.[0]?.CNTrackingDetail;
+  if (!details || details.length === 0) return null;
+  
+  // Get the last (most recent) tracking entry
+  const latest = details[details.length - 1];
+  return latest?.TrackingStatus || null;
+}
+
+/**
+ * Map M&P tracking status to our order status
+ */
+export function mapMnpStatusToOrderStatus(mnpStatus: string): string | null {
+  const status = mnpStatus?.toLowerCase() || '';
+  
+  if (status.includes('delivered') || status.includes('completed')) {
+    return 'delivered';
+  }
+  if (status.includes('return') || status.includes('rts')) {
+    return 'returned';
+  }
+  if (status.includes('cancel')) {
+    return 'cancelled';
+  }
+  if (status.includes('booked') || status.includes('picked') || status.includes('transit') || status.includes('arrived') || status.includes('dispatched') || status.includes('out for delivery')) {
+    return 'shipped';
+  }
+  
+  // Don't change status for unknown statuses
   return null;
 }

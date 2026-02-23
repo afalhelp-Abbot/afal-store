@@ -2,7 +2,7 @@
 
 import { requireAdmin } from '@/lib/auth';
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
-import { bookConsignment } from '@/lib/mnp';
+import { bookConsignment, trackConsignment, getLatestMnpStatus, mapMnpStatusToOrderStatus } from '@/lib/mnp';
 import { revalidatePath } from 'next/cache';
 
 export async function bookWithMnpAction(formData: FormData) {
@@ -132,6 +132,101 @@ export async function bookWithMnpAction(formData: FormData) {
       error_message: err.message,
     });
 
+    return { ok: false, message: `API error: ${err.message}` } as const;
+  }
+}
+
+/**
+ * Sync tracking status from M&P for an order
+ */
+export async function syncMnpStatusAction(formData: FormData) {
+  await requireAdmin();
+  const supabase = getSupabaseServerClient();
+
+  const orderId = String(formData.get('orderId') || '');
+  if (!orderId) {
+    return { ok: false, message: 'Order ID is required' } as const;
+  }
+
+  // Fetch order with tracking number
+  const { data: order, error: orderErr } = await supabase
+    .from('orders')
+    .select('id, status, courier_tracking_number, courier_id, couriers(id, name, api_type)')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  if (orderErr || !order) {
+    return { ok: false, message: orderErr?.message || 'Order not found' } as const;
+  }
+
+  if (!order.courier_tracking_number) {
+    return { ok: false, message: 'Order has no tracking number' } as const;
+  }
+
+  const courier = order.couriers as any;
+  if (!courier || courier.api_type !== 'mnp') {
+    return { ok: false, message: 'Order courier is not M&P' } as const;
+  }
+
+  try {
+    // Call M&P tracking API
+    const trackingResult = await trackConsignment(order.courier_tracking_number);
+
+    if (!trackingResult || trackingResult.isSuccess !== 'true') {
+      return { ok: false, message: trackingResult?.message || 'Failed to fetch tracking info' } as const;
+    }
+
+    // Get latest status
+    const mnpStatus = getLatestMnpStatus(trackingResult);
+    if (!mnpStatus) {
+      return { ok: false, message: 'No tracking status found' } as const;
+    }
+
+    // Map to our status
+    const newStatus = mapMnpStatusToOrderStatus(mnpStatus);
+    
+    // Get tracking details for display
+    const trackingDetails = trackingResult.tracking_Details?.[0];
+    const allStatuses = trackingDetails?.CNTrackingDetail?.map(d => ({
+      status: d.TrackingStatus,
+      time: d.TransactionTime,
+      narration: d.TrackingNarration,
+    })) || [];
+
+    // Update order status if mapped
+    if (newStatus && newStatus !== order.status) {
+      const { error: updateErr } = await supabase
+        .from('orders')
+        .update({
+          status: newStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId);
+
+      if (updateErr) {
+        return { ok: false, message: `Status update failed: ${updateErr.message}` } as const;
+      }
+
+      revalidatePath(`/admin/orders/${orderId}`);
+      revalidatePath('/admin/orders');
+
+      return {
+        ok: true,
+        mnpStatus,
+        newStatus,
+        statusChanged: true,
+        trackingHistory: allStatuses,
+      } as const;
+    }
+
+    return {
+      ok: true,
+      mnpStatus,
+      newStatus: order.status,
+      statusChanged: false,
+      trackingHistory: allStatuses,
+    } as const;
+  } catch (err: any) {
     return { ok: false, message: `API error: ${err.message}` } as const;
   }
 }
