@@ -467,11 +467,13 @@ export default function OrderDrawer({ open, onClose, colors, models, packages, s
               <div className="text-sm text-gray-600">Subtotal</div>
               <div className="text-right">
                 {discount > 0 && (
-                  <div className="text-xs text-green-700">Promo applied{promoLabel ? `: ${promoLabel}` : ''}</div>
+                  <div className="text-sm font-medium text-green-700 bg-green-50 px-2 py-1 rounded mb-1">
+                    🎉 {promoLabel || 'Promo'} applied! You save PKR {Number(discount).toLocaleString()}
+                  </div>
                 )}
-                <div className="text-lg font-semibold">PKR {Number(finalSubtotal || 0).toLocaleString()}</div>
+                <div className="text-xl font-bold">PKR {Number(finalSubtotal || 0).toLocaleString()}</div>
                 {discount > 0 && (
-                  <div className="text-xs text-gray-500 line-through">PKR {Number(subtotal || 0).toLocaleString()}</div>
+                  <div className="text-sm text-gray-400 line-through">PKR {Number(subtotal || 0).toLocaleString()}</div>
                 )}
               </div>
             </div>
