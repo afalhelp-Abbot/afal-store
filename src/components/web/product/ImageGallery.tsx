@@ -21,6 +21,7 @@ export default function ImageGallery({ items, className, productId, productName 
   const [origin, setOrigin] = useState<{ x: number; y: number }>({ x: 50, y: 50 });
   const mainRef = useRef<HTMLDivElement | null>(null);
   const thumbsRef = useRef<HTMLDivElement | null>(null);
+  const mobileThumbsRef = useRef<HTMLDivElement | null>(null);
   const [autoPosters, setAutoPosters] = useState<Record<number, string>>({});
   const [canHover, setCanHover] = useState(false);
 
@@ -92,6 +93,26 @@ export default function ImageGallery({ items, className, productId, productName 
     return () => ro.disconnect();
   }, []);
 
+  // Auto-scroll thumbnail into view when index changes (desktop + mobile)
+  useEffect(() => {
+    // Desktop thumbnails (vertical)
+    if (thumbsRef.current) {
+      const thumbButtons = thumbsRef.current.querySelectorAll('button');
+      const activeThumb = thumbButtons[safeIndex];
+      if (activeThumb) {
+        activeThumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      }
+    }
+    // Mobile thumbnails (horizontal)
+    if (mobileThumbsRef.current) {
+      const thumbButtons = mobileThumbsRef.current.querySelectorAll('button');
+      const activeThumb = thumbButtons[safeIndex];
+      if (activeThumb) {
+        activeThumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      }
+    }
+  }, [safeIndex]);
+
   if (!items?.length) return null;
 
   // Fallback: generate poster for any video without a provided poster
@@ -99,38 +120,66 @@ export default function ImageGallery({ items, className, productId, productName 
     const gen = async (i: number) => {
       const it = items[i] as any;
       if (!it || it.type !== 'video' || it.poster || autoPosters[i]) return;
-      try {
-        const video = document.createElement('video');
-        video.crossOrigin = 'anonymous';
-        video.preload = 'auto';
-        video.src = it.src as string;
-        await new Promise<void>((resolve, reject) => {
-          video.onloadedmetadata = () => {
-            const target = Math.min(Math.max(0.1, 1), Math.max(0.1, video.duration - 0.1));
+      
+      // Try to capture a frame from the video
+      const tryCapture = (withCors: boolean): Promise<string | null> => {
+        return new Promise((resolve) => {
+          const video = document.createElement('video');
+          if (withCors) video.crossOrigin = 'anonymous';
+          video.preload = 'auto';
+          video.muted = true;
+          video.playsInline = true;
+          video.src = it.src as string;
+          
+          const timeout = setTimeout(() => {
+            video.src = '';
+            resolve(null);
+          }, 5000); // 5 second timeout
+          
+          video.onloadeddata = () => {
+            // Wait for first frame to be available
+            const target = Math.min(0.5, video.duration * 0.1); // Try 10% into video or 0.5s
             const onSeeked = () => {
+              clearTimeout(timeout);
               try {
-                const w = Math.max(1, video.videoWidth);
-                const h = Math.max(1, video.videoHeight);
+                const w = video.videoWidth || 320;
+                const h = video.videoHeight || 240;
                 const canvas = document.createElement('canvas');
-                canvas.width = w; canvas.height = h;
+                canvas.width = w;
+                canvas.height = h;
                 const ctx = canvas.getContext('2d');
-                if (!ctx) { reject(new Error('no canvas')); return; }
+                if (!ctx) { resolve(null); return; }
                 ctx.drawImage(video, 0, 0, w, h);
-                const url = canvas.toDataURL('image/jpeg', 0.9);
-                setAutoPosters(prev => ({ ...prev, [i]: url }));
-                resolve();
-              } catch (e) { reject(e as any); }
+                const url = canvas.toDataURL('image/jpeg', 0.8);
+                video.src = '';
+                resolve(url);
+              } catch {
+                video.src = '';
+                resolve(null);
+              }
             };
             video.addEventListener('seeked', onSeeked, { once: true });
-            try { video.currentTime = target; } catch { reject(new Error('seek failed')); }
+            video.currentTime = target;
           };
-          video.onerror = () => reject(new Error('video load error'));
+          
+          video.onerror = () => {
+            clearTimeout(timeout);
+            video.src = '';
+            resolve(null);
+          };
         });
-      } catch (e) {
-        // silently ignore; keep black fallback
+      };
+      
+      // Try without CORS first (works for same-origin), then with CORS
+      let url = await tryCapture(false);
+      if (!url) url = await tryCapture(true);
+      
+      if (url) {
+        setAutoPosters(prev => ({ ...prev, [i]: url as string }));
       }
     };
-    // Attempt for all items (covers mobile thumbnail rail)
+    
+    // Attempt for all video items
     for (let i = 0; i < Math.min(items.length, 12); i++) gen(i);
   }, [items, autoPosters]);
 
@@ -159,10 +208,14 @@ export default function ImageGallery({ items, className, productId, productName 
                 />
               ) : (
                 <>
-                  {autoPosters[i] ? (
-                    <Image src={autoPosters[i]} alt={it.alt ?? `Thumbnail ${i + 1}`} fill sizes="88px" className="object-cover" />
+                  {(it.poster || autoPosters[i]) ? (
+                    <Image src={it.poster || autoPosters[i]} alt={it.alt ?? `Thumbnail ${i + 1}`} fill sizes="88px" className="object-cover" />
                   ) : (
-                    <div className="w-full h-full grid place-items-center bg-black text-white text-xs">VID</div>
+                    <div className="w-full h-full grid place-items-center bg-gradient-to-br from-gray-700 to-gray-900 text-white">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="opacity-70">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </div>
                   )}
                   {/* Play badge */}
                   <div className="absolute right-1 bottom-1 bg-black/70 text-white rounded-full p-1 leading-none">
@@ -247,7 +300,7 @@ export default function ImageGallery({ items, className, productId, productName 
         </div>
         {/* Mobile thumbnails below */}
         <div className="mt-2 md:hidden">
-          <div className="flex gap-1.5 overflow-x-auto">
+          <div ref={mobileThumbsRef} className="flex gap-1.5 overflow-x-auto">
             {items.map((it, i) => (
               <button
                 key={i}
@@ -268,10 +321,14 @@ export default function ImageGallery({ items, className, productId, productName 
                   />
                 ) : (
                   <>
-                    {autoPosters[i] ? (
-                      <Image src={autoPosters[i]} alt={it.alt ?? `Thumbnail ${i + 1}`} fill sizes="56px" className="object-cover" />
+                    {(it.poster || autoPosters[i]) ? (
+                      <Image src={it.poster || autoPosters[i]} alt={it.alt ?? `Thumbnail ${i + 1}`} fill sizes="56px" className="object-cover" />
                     ) : (
-                      <div className="w-full h-full grid place-items-center bg-black text-white text-xs">VID</div>
+                      <div className="w-full h-full grid place-items-center bg-gradient-to-br from-gray-700 to-gray-900 text-white">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="opacity-70">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
                     )}
                     {/* Play badge */}
                     <div className="absolute right-1 bottom-1 bg-black/70 text-white rounded-full p-1 leading-none">

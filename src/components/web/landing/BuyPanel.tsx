@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { createPortal } from 'react-dom';
 import OrderDrawer from './OrderDrawer';
 import { track } from '@/lib/pixel';
 
@@ -28,9 +29,11 @@ type BuyPanelProps = {
   ctaSize?: 'small' | 'medium' | 'large';
   promotions?: any[];
   hasColorDimension?: boolean;
+  // Control which breakpoint shows the floating CTA: 'mobile' | 'desktop' | 'both'
+  floatingCtaBreakpoint?: 'mobile' | 'desktop' | 'both';
 };
 
-export default function BuyPanel({ colors, models, packages, sizes, matrix, colorThumbs, logoUrl, specialMessage, darazUrl, darazTrustLine, chatFacebookUrl, chatInstagramUrl, contentIdSource, variantSkuMap, ctaLabel: ctaLabelProp, ctaSize, promotions, hasColorDimension }: BuyPanelProps) {
+export default function BuyPanel({ colors, models, packages, sizes, matrix, colorThumbs, logoUrl, specialMessage, darazUrl, darazTrustLine, chatFacebookUrl, chatInstagramUrl, contentIdSource, variantSkuMap, ctaLabel: ctaLabelProp, ctaSize, promotions, hasColorDimension, floatingCtaBreakpoint = 'both' }: BuyPanelProps) {
   // Helpers to compute availability for an option under current constraints
   const availabilityForColor = React.useCallback((c: string) => {
     return Object.entries(matrix)
@@ -148,19 +151,58 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
   }, [matrix, selectedColor, selectedModel, selectedPackage, selectedSize, models.length, packages.length, sizes.length]);
 
   // Re-appearing CTA: if the panel scrolls out of view, show a floating Start Order button
+  // Store the panel's initial offset from document top, then compare with scrollY
+  const panelOffsetTop = React.useRef<number | null>(null);
+  const debugId = React.useRef(`panel-${Math.random().toString(36).slice(2, 6)}`);
+
   React.useEffect(() => {
-    if (!panelRef.current) return;
-    const el = panelRef.current;
-    const io = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        setShowFloatCTA(!entry.isIntersecting);
-      },
-      { root: null, rootMargin: '0px', threshold: 0 }
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [panelRef.current]);
+    const measureOffset = () => {
+      if (!panelRef.current) {
+        console.log(`[${debugId.current}] ❌ panelRef.current is null`);
+        return;
+      }
+      // Check if this panel is actually visible (not hidden by CSS)
+      const panelRect = panelRef.current.getBoundingClientRect();
+      if (panelRect.width === 0 || panelRect.height === 0) {
+        console.log(`[${debugId.current}] ⏭️ Panel hidden (width=${panelRect.width}, height=${panelRect.height}), skipping`);
+        return;
+      }
+      // Calculate absolute offset from document top
+      panelOffsetTop.current = panelRect.top + window.scrollY;
+      console.log(`[${debugId.current}] 📏 MEASURED: panelOffsetTop=${panelOffsetTop.current}, panelHeight=${panelRect.height}, breakpoint=${floatingCtaBreakpoint}`);
+    };
+
+    const checkVisibility = () => {
+      if (panelOffsetTop.current === null) {
+        measureOffset();
+      }
+      if (panelOffsetTop.current === null) return;
+      
+      // Show floating CTA when the BuyPanel's Order Now button scrolls out of view (above viewport)
+      // The button is roughly 250px from the top of the panel
+      const buttonOffset = panelOffsetTop.current + 250; // Approximate position of Order Now button
+      const isOutOfView = window.scrollY > buttonOffset; // Show when button has scrolled past the top of viewport
+      
+      // Only log when state changes
+      if (isOutOfView !== showFloatCTA) {
+        console.log(`[${debugId.current}] 🔄 STATE CHANGE: scrollY=${window.scrollY}, buttonOffset=${buttonOffset}, isOutOfView=${isOutOfView}, showFloatCTA will be: ${isOutOfView}`);
+      }
+      
+      setShowFloatCTA(isOutOfView);
+    };
+    
+    // Measure after DOM is ready
+    console.log(`[${debugId.current}] 🚀 INIT: breakpoint=${floatingCtaBreakpoint}`);
+    setTimeout(measureOffset, 300);
+    
+    // Check on scroll
+    window.addEventListener('scroll', checkVisibility, { passive: true });
+    window.addEventListener('resize', measureOffset);
+    return () => {
+      window.removeEventListener('scroll', checkVisibility);
+      window.removeEventListener('resize', measureOffset);
+    };
+  }, [floatingCtaBreakpoint]);
 
   // Observe bottom sentinel to avoid overlaying footer
   React.useEffect(() => {
@@ -472,9 +514,9 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
         promotions={promotions as any}
       />
 
-      {/* Floating buy panel that follows scrolling; grows near bottom */}
-      {(showFloatCTA || nearBottom) && !drawerOpen && (
-        <div className={`fixed right-4 z-40 max-w-[95vw] ${nearBottom ? 'bottom-6 w-[483px]' : 'bottom-4 w-[345px]'}`}>
+      {/* Floating buy panel that follows scrolling; grows near bottom - rendered via Portal to avoid parent transform issues */}
+      {(showFloatCTA || nearBottom) && !drawerOpen && typeof document !== 'undefined' && createPortal(
+        <div data-testid="float-cta" style={{ position: 'fixed', bottom: nearBottom ? '24px' : '16px', right: '16px', zIndex: 9999, maxWidth: '95vw', width: nearBottom ? '483px' : '345px' }} className={`${floatingCtaBreakpoint === 'mobile' ? 'lg:hidden' : floatingCtaBreakpoint === 'desktop' ? 'hidden lg:block' : ''}`} data-debug-panel={debugId.current} data-breakpoint={floatingCtaBreakpoint}>
           <div className="border rounded-lg bg-white shadow-lg p-3 space-y-3">
             <div className="flex items-center justify-between">
               <div className="text-sm text-gray-600">Price</div>
@@ -561,7 +603,8 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

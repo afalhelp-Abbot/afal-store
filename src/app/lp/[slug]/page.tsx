@@ -370,7 +370,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
   const ctaSize = ((product as any).cta_size as string | null) || 'medium';
 
   return (
-    <div className="max-w-6xl mx-auto p-3 sm:p-5 md:p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-3 sm:gap-6 lg:gap-8 items-start">
+    <div className="max-w-6xl mx-auto p-3 sm:p-5 md:p-6 grid grid-cols-1 lg:grid-cols-[680px_1fr] gap-3 sm:gap-6 lg:gap-8 items-start overflow-x-hidden">
       <UTMCapture />
       <LpGa4Tracker
         globalGa={gaGlobal || null}
@@ -461,6 +461,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
             ctaSize={ctaSize as any}
             promotions={promotions as any}
             hasColorDimension={hasColorDimension}
+            floatingCtaBreakpoint="mobile"
           />
           <ReviewSummary productId={product.id} />
         </div>
@@ -620,6 +621,7 @@ export default async function LandingPage({ params }: { params: { slug: string }
             ctaSize={ctaSize as any}
             promotions={promotions as any}
             hasColorDimension={hasColorDimension}
+            floatingCtaBreakpoint="desktop"
           />
           <ReviewSummary productId={product.id} />
           <SocialLinks
