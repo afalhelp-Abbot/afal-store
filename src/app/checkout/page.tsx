@@ -16,6 +16,7 @@ import {
   type Ga4GlobalConfig,
   type Ga4ProductOverride,
 } from "@/lib/ga4";
+import { getAttributionDataForOrder, getCurrentSessionId, logLpEvent, updateCheckoutCount } from "@/lib/session";
 
 type CartItem = { variant_id: string; qty: number };
 
@@ -433,6 +434,28 @@ function CheckoutInner() {
     }
   }, [pixelCfg, lines, variants, success]);
 
+  // Log initiate_checkout to sessions system (for funnel tracking)
+  const firedSessionCheckoutRef = useRef(false);
+  useEffect(() => {
+    if (success) return;
+    if (firedSessionCheckoutRef.current) return;
+    if (!lines.length) return;
+    
+    const sessionId = getCurrentSessionId();
+    if (!sessionId) return;
+    
+    // Log event and update checkout count
+    firedSessionCheckoutRef.current = true;
+    updateCheckoutCount(sessionId);
+    logLpEvent('initiate_checkout', {
+      sessionId,
+      metadata: {
+        variant_id: lines[0]?.variant_id,
+        price: variants[lines[0]?.variant_id]?.price || 0,
+      },
+    });
+  }, [lines, variants, success]);
+
   // GA4: begin_checkout once per checkout session
   useEffect(() => {
     if (success) return;
@@ -616,6 +639,9 @@ function CheckoutInner() {
       };
       const fbp = readCookie('_fbp');
       const fbc = readCookie('_fbc');
+      // Get attribution data for order
+      const attributionData = getAttributionDataForOrder();
+      
       const payload = {
         customer: {
           name: name0,
@@ -639,6 +665,17 @@ function CheckoutInner() {
             }
           : null,
         fbMeta: { fbp: fbp || null, fbc: fbc || null },
+        attribution: {
+          session_id: attributionData.attribution_session_id || null,
+          utm_content: attributionData.utm_content || null,
+          utm_term: attributionData.utm_term || null,
+          fbclid: attributionData.fbclid || null,
+          fbc: attributionData.fbc || fbc || null,
+          fbp: attributionData.fbp || fbp || null,
+          referrer: attributionData.referrer || null,
+          entry_lp_slug: attributionData.entry_lp_slug || null,
+          device_category: attributionData.device_category || null,
+        },
       };
       const res = await fetch("/api/orders/create", {
         method: "POST",
@@ -675,6 +712,19 @@ function CheckoutInner() {
         });
 
         markPurchaseFired(data.order_id);
+      }
+
+      // Log purchase event to sessions system (for funnel tracking)
+      const sessionId = getCurrentSessionId();
+      if (sessionId && data.order_id) {
+        logLpEvent('purchase', {
+          sessionId,
+          orderId: data.order_id,
+          metadata: {
+            total: (Number(subtotal) || 0) + (Number(shippingAmount) || 0),
+            variant_id: lines[0]?.variant_id,
+          },
+        });
       }
 
       // Fire Purchase after success (include shipping)

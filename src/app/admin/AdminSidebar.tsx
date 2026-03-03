@@ -12,6 +12,7 @@ const navItems = [
   { href: '/admin/shipping', label: 'Shipping' },
   { href: '/admin/couriers', label: 'Couriers' },
   { href: '/admin/reports', label: 'Reports' },
+  { href: '/admin/advertising', label: 'Advertising' },
   { href: '/admin/analytics/ga4', label: 'Analytics / GA4' },
   { href: '/admin/products', label: 'Products' },
   { href: '/admin/logs', label: 'Logs' },

@@ -21,7 +21,18 @@ Expected payload (JSON):
   },
   "items": [
     { "variant_id": string, "qty": number }
-  ]
+  ],
+  "attribution"?: {
+    "session_id"?: string,
+    "utm_content"?: string,
+    "utm_term"?: string,
+    "fbclid"?: string,
+    "fbc"?: string,
+    "fbp"?: string,
+    "referrer"?: string,
+    "entry_lp_slug"?: string,
+    "device_category"?: string
+  }
 }
 */
 
@@ -66,6 +77,79 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
     const orderId = data as string;
+
+    // Update order with attribution data (non-blocking)
+    const attribution = body?.attribution || {};
+    let sessionId = attribution.session_id || null;
+    
+    // LAST-TOUCH RULE: If no session_id provided but we have visitor_id,
+    // find the most recent session for this visitor within 7 days
+    if (!sessionId && attribution.visitor_id) {
+      try {
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const { data: recentSession } = await supabase
+          .from('sessions')
+          .select('id')
+          .eq('visitor_id', attribution.visitor_id)
+          .gte('created_at', sevenDaysAgo)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (recentSession?.id) {
+          sessionId = recentSession.id;
+          console.log('[orders/create] Last-touch session found:', sessionId);
+        }
+      } catch (e) {
+        console.error('[orders/create] Last-touch session lookup failed:', e);
+      }
+    }
+    
+    try {
+      const attributionUpdate: Record<string, any> = {};
+      
+      if (sessionId) attributionUpdate.attribution_session_id = sessionId;
+      if (attribution.utm_content) attributionUpdate.utm_content = attribution.utm_content;
+      if (attribution.utm_term) attributionUpdate.utm_term = attribution.utm_term;
+      if (attribution.fbclid) attributionUpdate.fbclid = attribution.fbclid;
+      if (attribution.fbc) attributionUpdate.fbc = attribution.fbc;
+      if (attribution.fbp) attributionUpdate.fbp = attribution.fbp;
+      if (attribution.referrer) attributionUpdate.referrer = attribution.referrer;
+      if (attribution.entry_lp_slug) attributionUpdate.entry_lp_slug = attribution.entry_lp_slug;
+      if (attribution.device_category) attributionUpdate.device_category = attribution.device_category;
+      
+      // Also capture tracking config snapshot for audits
+      if (attribution.tracking_snapshot) {
+        attributionUpdate.tracking_snapshot = attribution.tracking_snapshot;
+      }
+      
+      if (Object.keys(attributionUpdate).length > 0) {
+        await supabase
+          .from('orders')
+          .update(attributionUpdate)
+          .eq('id', orderId);
+      }
+    } catch (e) {
+      console.error('[orders/create] attribution update failed', e);
+    }
+
+    // SERVER-AUTHORITATIVE: Log purchase event to lp_events (dedupe by order_id)
+    // This is the source of truth for funnel "purchase" count - not client-side
+    if (sessionId) {
+      try {
+        await supabase
+          .from('lp_events')
+          .upsert({
+            session_id: sessionId,
+            event_type: 'purchase',
+            event_id: orderId, // Use order_id as event_id for dedupe
+            order_id: orderId,
+            metadata: { server_logged: true },
+          }, { onConflict: 'event_id' });
+      } catch (e) {
+        console.error('[orders/create] purchase event logging failed', e);
+      }
+    }
 
     // Generate a short, human-friendly order code (e.g. MIBL00001) via Postgres RPC.
     // If this fails for any reason, we silently fall back to the UUID everywhere.

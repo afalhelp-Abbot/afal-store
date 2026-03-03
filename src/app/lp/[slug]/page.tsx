@@ -7,6 +7,7 @@ import Image from 'next/image';
 import ImageGallery, { type MediaItem } from '@/components/web/product/ImageGallery';
 import UTMCapture from '@/components/web/landing/UTMCapture';
 import LPViewPixel from '@/components/web/pixel/LPViewPixel';
+import SessionTracker from '@/components/web/tracking/SessionTracker';
 import SocialLinks from '@/components/web/landing/SocialLinks';
 import TrackedVideo from '@/components/web/landing/TrackedVideo';
 import LpGa4Tracker from '@/components/web/ga4/LpGa4Tracker';
@@ -381,6 +382,12 @@ export default async function LandingPage({ params }: { params: { slug: string }
           sku: (v.sku as string | null) ?? null,
           price: v.price != null ? Number(v.price) : null,
         }))}
+      />
+      {/* Session Tracking for Attribution */}
+      <SessionTracker
+        productId={product.id}
+        lpSlug={product.slug}
+        variantCount={(variants || []).length}
       />
       {/* Meta Pixel: ViewContent */}
       <LPViewPixel
