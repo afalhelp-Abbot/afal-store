@@ -369,10 +369,10 @@ export async function POST(req: Request) {
 
     // Conversions API (Meta) — Purchase event (server-to-server)
     try {
-      const GLOBAL_PIXEL_ID = process.env.FB_PIXEL_ID;
-      const ACCESS_TOKEN = process.env.FB_ACCESS_TOKEN;
+      const GLOBAL_PIXEL_ID = process.env.META_PIXEL_ID || process.env.FB_PIXEL_ID;
+      const ACCESS_TOKEN = process.env.META_CONVERSIONS_API_TOKEN || process.env.FB_ACCESS_TOKEN;
       if (!ACCESS_TOKEN) {
-        console.warn('[orders/create] FB CAPI disabled (missing FB_ACCESS_TOKEN)');
+        console.warn('[orders/create] FB CAPI disabled (missing META_CONVERSIONS_API_TOKEN)');
       } else {
         // Build value/contents from order_lines and resolve per-product pixel from variants -> products -> product_pixel
         const { data: lines2 } = await getSupabaseServiceClient()
