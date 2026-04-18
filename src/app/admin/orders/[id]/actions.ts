@@ -3,6 +3,7 @@
 import { requireAdmin } from '@/lib/auth';
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
 import { revalidatePath } from 'next/cache';
+import { sendDeliveredEventToMeta } from './metaDelivered';
 
 export async function updateStatusAction(formData: FormData) {
   const id = String(formData.get('id') || '');
@@ -107,6 +108,14 @@ export async function updateStatusAction(formData: FormData) {
       console.error('[admin/orders] status update error', { id, from, to, message: updErr.message });
       return { ok: false, message: updErr.message } as const;
     }
+
+    // Send Delivered event to Meta CAPI (fire once, non-blocking)
+    if (to === 'delivered') {
+      sendDeliveredEventToMeta(id).catch((err: any) => {
+        console.error('[admin/orders] Meta Delivered event failed', { id, error: err?.message });
+      });
+    }
+
     revalidatePath(`/admin/orders/${id}`);
     return { ok: true } as const;
   }
@@ -126,6 +135,13 @@ export async function updateStatusAction(formData: FormData) {
       message: rpcError.message,
     });
     return { ok: false, message: rpcError.message } as const;
+  }
+
+  // Send Delivered event to Meta CAPI (fire once, non-blocking)
+  if (to === 'delivered') {
+    sendDeliveredEventToMeta(id).catch((err: any) => {
+      console.error('[admin/orders] Meta Delivered event failed', { id, error: err?.message });
+    });
   }
 
   revalidatePath(`/admin/orders/${id}`);
