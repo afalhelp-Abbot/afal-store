@@ -11,8 +11,10 @@ type FunnelData = {
   view_content: number;
   initiate_checkout: number;
   purchase: number;
+  delivered: number;
   view_to_checkout_rate: number;
   checkout_to_purchase_rate: number;
+  purchase_to_delivered_rate: number;
   overall_conversion_rate: number;
 };
 
@@ -78,12 +80,25 @@ export default function FunnelPage() {
 
       const productMap = new Map((products || []).map(p => [p.id, p]));
 
+      // Fetch delivered orders for the funnel (COD delivery success)
+      let deliveredQuery = supabaseBrowser
+        .from('orders')
+        .select('id, entry_lp_slug, device_category')
+        .eq('status', 'delivered');
+      
+      if (dateFilter) {
+        deliveredQuery = deliveredQuery.gte('created_at', dateFilter);
+      }
+      
+      const { data: deliveredOrders } = await deliveredQuery;
+
       // Group events
-      const grouped = new Map<string, { view: number; checkout: number; purchase: number; name: string | null; slug: string | null }>();
+      const grouped = new Map<string, { view: number; checkout: number; purchase: number; delivered: number; name: string | null; slug: string | null }>();
 
       let totalView = 0;
       let totalCheckout = 0;
       let totalPurchase = 0;
+      let totalDelivered = 0;
 
       for (const event of events || []) {
         const session = event.session as any;
@@ -102,7 +117,7 @@ export default function FunnelPage() {
           slug = null;
         }
 
-        const existing = grouped.get(key) || { view: 0, checkout: 0, purchase: 0, name, slug };
+        const existing = grouped.get(key) || { view: 0, checkout: 0, purchase: 0, delivered: 0, name, slug };
 
         if (event.event_type === 'view_content') {
           existing.view += 1;
@@ -118,6 +133,24 @@ export default function FunnelPage() {
         grouped.set(key, existing);
       }
 
+      // Add delivered counts from orders
+      for (const order of deliveredOrders || []) {
+        let key: string;
+        if (groupBy === 'product') {
+          // Find product by entry_lp_slug
+          const product = Array.from(productMap.values()).find(p => p.slug === order.entry_lp_slug);
+          key = product?.id || '(unknown)';
+        } else {
+          key = order.device_category || '(unknown)';
+        }
+        
+        const existing = grouped.get(key);
+        if (existing) {
+          existing.delivered += 1;
+        }
+        totalDelivered += 1;
+      }
+
       // Convert to array with rates
       const result: FunnelData[] = Array.from(grouped.entries())
         .map(([productId, val]) => ({
@@ -127,8 +160,10 @@ export default function FunnelPage() {
           view_content: val.view,
           initiate_checkout: val.checkout,
           purchase: val.purchase,
+          delivered: val.delivered,
           view_to_checkout_rate: val.view > 0 ? (val.checkout / val.view) * 100 : 0,
           checkout_to_purchase_rate: val.checkout > 0 ? (val.purchase / val.checkout) * 100 : 0,
+          purchase_to_delivered_rate: val.purchase > 0 ? (val.delivered / val.purchase) * 100 : 0,
           overall_conversion_rate: val.view > 0 ? (val.purchase / val.view) * 100 : 0,
         }))
         .sort((a, b) => b.view_content - a.view_content);
@@ -141,8 +176,10 @@ export default function FunnelPage() {
         view_content: totalView,
         initiate_checkout: totalCheckout,
         purchase: totalPurchase,
+        delivered: totalDelivered,
         view_to_checkout_rate: totalView > 0 ? (totalCheckout / totalView) * 100 : 0,
         checkout_to_purchase_rate: totalCheckout > 0 ? (totalPurchase / totalCheckout) * 100 : 0,
+        purchase_to_delivered_rate: totalPurchase > 0 ? (totalDelivered / totalPurchase) * 100 : 0,
         overall_conversion_rate: totalView > 0 ? (totalPurchase / totalView) * 100 : 0,
       };
 
@@ -328,42 +365,60 @@ export default function FunnelPage() {
       {/* Overall funnel visualization */}
       {totals && (
         <div className="bg-white border rounded-lg p-6">
-          <h3 className="font-medium mb-4">Overall Funnel</h3>
-          <div className="flex items-center justify-between gap-4">
+          <h3 className="font-medium mb-4">Overall Funnel (COD)</h3>
+          <div className="flex items-center justify-between gap-2">
             {/* View Content */}
             <div className="flex-1 text-center">
-              <div className="text-3xl font-bold text-blue-600">{totals.view_content}</div>
-              <div className="text-sm text-gray-600">LP Views</div>
+              <div className="text-2xl font-bold text-blue-600">{totals.view_content}</div>
+              <div className="text-xs text-gray-600">LP Views</div>
             </div>
 
             {/* Arrow + Rate */}
-            <div className="text-center">
-              <div className="text-2xl text-gray-400">→</div>
+            <div className="text-center px-1">
+              <div className="text-xl text-gray-400">→</div>
               <div className="text-xs text-gray-500">{formatPercent(totals.view_to_checkout_rate)}</div>
             </div>
 
             {/* Initiate Checkout */}
             <div className="flex-1 text-center">
-              <div className="text-3xl font-bold text-yellow-600">{totals.initiate_checkout}</div>
-              <div className="text-sm text-gray-600">Checkouts</div>
+              <div className="text-2xl font-bold text-yellow-600">{totals.initiate_checkout}</div>
+              <div className="text-xs text-gray-600">Checkouts</div>
             </div>
 
             {/* Arrow + Rate */}
-            <div className="text-center">
-              <div className="text-2xl text-gray-400">→</div>
+            <div className="text-center px-1">
+              <div className="text-xl text-gray-400">→</div>
               <div className="text-xs text-gray-500">{formatPercent(totals.checkout_to_purchase_rate)}</div>
             </div>
 
             {/* Purchase */}
             <div className="flex-1 text-center">
-              <div className="text-3xl font-bold text-green-600">{totals.purchase}</div>
-              <div className="text-sm text-gray-600">Purchases</div>
+              <div className="text-2xl font-bold text-orange-600">{totals.purchase}</div>
+              <div className="text-xs text-gray-600">Orders</div>
+            </div>
+
+            {/* Arrow + Rate */}
+            <div className="text-center px-1">
+              <div className="text-xl text-gray-400">→</div>
+              <div className="text-xs text-gray-500">{formatPercent(totals.purchase_to_delivered_rate)}</div>
+            </div>
+
+            {/* Delivered */}
+            <div className="flex-1 text-center">
+              <div className="text-2xl font-bold text-green-600">{totals.delivered}</div>
+              <div className="text-xs text-gray-600">Delivered</div>
             </div>
           </div>
 
-          <div className="mt-4 pt-4 border-t text-center">
-            <span className="text-sm text-gray-600">Overall Conversion Rate: </span>
-            <span className="font-bold text-green-600">{formatPercent(totals.overall_conversion_rate)}</span>
+          <div className="mt-4 pt-4 border-t flex justify-center gap-6 text-sm">
+            <div>
+              <span className="text-gray-600">Order CVR: </span>
+              <span className="font-bold text-orange-600">{formatPercent(totals.overall_conversion_rate)}</span>
+            </div>
+            <div>
+              <span className="text-gray-600">Delivery Rate: </span>
+              <span className="font-bold text-green-600">{formatPercent(totals.purchase_to_delivered_rate)}</span>
+            </div>
           </div>
         </div>
       )}
@@ -382,32 +437,34 @@ export default function FunnelPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="text-left px-4 py-3 font-medium">
+                <th className="text-left px-3 py-3 font-medium">
                   {groupBy === 'product' ? 'Product / LP' : 'Device'}
                 </th>
-                <th className="text-right px-4 py-3 font-medium">Views</th>
-                <th className="text-right px-4 py-3 font-medium">Checkouts</th>
-                <th className="text-right px-4 py-3 font-medium">Purchases</th>
-                <th className="text-right px-4 py-3 font-medium">View → Checkout</th>
-                <th className="text-right px-4 py-3 font-medium">Checkout → Purchase</th>
-                <th className="text-right px-4 py-3 font-medium">Overall CVR</th>
+                <th className="text-right px-2 py-3 font-medium">Views</th>
+                <th className="text-right px-2 py-3 font-medium">Checkouts</th>
+                <th className="text-right px-2 py-3 font-medium">Orders</th>
+                <th className="text-right px-2 py-3 font-medium">Delivered</th>
+                <th className="text-right px-2 py-3 font-medium text-xs">View→CO</th>
+                <th className="text-right px-2 py-3 font-medium text-xs">CO→Order</th>
+                <th className="text-right px-2 py-3 font-medium text-xs">Delivery%</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {data.map((row, i) => (
                 <tr key={i} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <div className="font-medium">{row.product_name || row.product_id || '(unknown)'}</div>
                     {row.lp_slug && (
                       <div className="text-xs text-gray-500">/lp/{row.lp_slug}</div>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right">{row.view_content}</td>
-                  <td className="px-4 py-3 text-right">{row.initiate_checkout}</td>
-                  <td className="px-4 py-3 text-right">{row.purchase}</td>
-                  <td className="px-4 py-3 text-right text-gray-600">{formatPercent(row.view_to_checkout_rate)}</td>
-                  <td className="px-4 py-3 text-right text-gray-600">{formatPercent(row.checkout_to_purchase_rate)}</td>
-                  <td className="px-4 py-3 text-right font-medium text-green-600">{formatPercent(row.overall_conversion_rate)}</td>
+                  <td className="px-2 py-3 text-right">{row.view_content}</td>
+                  <td className="px-2 py-3 text-right">{row.initiate_checkout}</td>
+                  <td className="px-2 py-3 text-right">{row.purchase}</td>
+                  <td className="px-2 py-3 text-right font-medium text-green-600">{row.delivered}</td>
+                  <td className="px-2 py-3 text-right text-gray-600 text-xs">{formatPercent(row.view_to_checkout_rate)}</td>
+                  <td className="px-2 py-3 text-right text-gray-600 text-xs">{formatPercent(row.checkout_to_purchase_rate)}</td>
+                  <td className="px-2 py-3 text-right font-medium text-green-600 text-xs">{formatPercent(row.purchase_to_delivered_rate)}</td>
                 </tr>
               ))}
             </tbody>

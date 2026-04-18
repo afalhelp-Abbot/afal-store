@@ -51,6 +51,14 @@ export default function DiagnosticsPage() {
     pixelLoadedFalseRate: 0,
     blockedSuspectedRate: 0,
   });
+  
+  // Meta CAPI status (server-side events)
+  const [capiStats, setCapiStats] = useState({
+    deliveredSent: 0,
+    deliveredFailed: 0,
+    deliveredPending: 0,
+    recentDelivered: [] as Array<{ id: string; short_code: string; status: string; error: string | null; attempted_at: string | null }>,
+  });
 
   useEffect(() => {
     loadData();
@@ -177,6 +185,33 @@ export default function DiagnosticsPage() {
       });
 
       setWarnings(warningsList);
+
+      // Fetch Meta CAPI stats (server-side Delivered events)
+      const { data: capiOrders } = await supabaseBrowser
+        .from('orders')
+        .select('id, short_code, delivered_report_to_meta_status, delivered_report_to_meta_error, delivered_report_to_meta_attempted_at')
+        .not('delivered_report_to_meta_status', 'is', null)
+        .order('delivered_report_to_meta_attempted_at', { ascending: false })
+        .limit(20);
+
+      const capiData = capiOrders || [];
+      const sent = capiData.filter((o: any) => o.delivered_report_to_meta_status === 'sent').length;
+      const failed = capiData.filter((o: any) => o.delivered_report_to_meta_status === 'failed').length;
+      const pending = capiData.filter((o: any) => o.delivered_report_to_meta_status === 'pending').length;
+
+      setCapiStats({
+        deliveredSent: sent,
+        deliveredFailed: failed,
+        deliveredPending: pending,
+        recentDelivered: capiData.map((o: any) => ({
+          id: o.id,
+          short_code: o.short_code || o.id.slice(0, 8),
+          status: o.delivered_report_to_meta_status,
+          error: o.delivered_report_to_meta_error,
+          attempted_at: o.delivered_report_to_meta_attempted_at,
+        })),
+      });
+
     } catch (e: any) {
       setError(e?.message || 'Failed to load diagnostics data');
     } finally {
@@ -292,23 +327,41 @@ export default function DiagnosticsPage() {
       </div>
 
       {/* Health KPIs */}
-      {!loading && recentEvents.length > 0 && (
-        <div className="grid grid-cols-3 gap-4">
-          <div className="bg-white border rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold text-blue-600">{healthKpis.eventsLast24h}</div>
+      {!loading && (
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+          {/* Client-side events */}
+          <div className="bg-white border rounded-lg p-3 text-center">
+            <div className="text-xl font-bold text-blue-600">{healthKpis.eventsLast24h}</div>
             <div className="text-xs text-gray-600">Events (24h)</div>
           </div>
-          <div className="bg-white border rounded-lg p-4 text-center">
-            <div className={`text-2xl font-bold ${healthKpis.pixelLoadedFalseRate > 20 ? 'text-red-600' : 'text-green-600'}`}>
+          <div className="bg-white border rounded-lg p-3 text-center">
+            <div className={`text-xl font-bold ${healthKpis.pixelLoadedFalseRate > 20 ? 'text-red-600' : 'text-green-600'}`}>
               {healthKpis.pixelLoadedFalseRate.toFixed(0)}%
             </div>
-            <div className="text-xs text-gray-600">Pixel Load Failed</div>
+            <div className="text-xs text-gray-600">Pixel Failed</div>
           </div>
-          <div className="bg-white border rounded-lg p-4 text-center">
-            <div className={`text-2xl font-bold ${healthKpis.blockedSuspectedRate > 20 ? 'text-amber-600' : 'text-green-600'}`}>
+          <div className="bg-white border rounded-lg p-3 text-center">
+            <div className={`text-xl font-bold ${healthKpis.blockedSuspectedRate > 20 ? 'text-amber-600' : 'text-green-600'}`}>
               {healthKpis.blockedSuspectedRate.toFixed(0)}%
             </div>
-            <div className="text-xs text-gray-600">Blocked Suspected</div>
+            <div className="text-xs text-gray-600">Blocked</div>
+          </div>
+          {/* Server-side CAPI */}
+          <div className="bg-white border rounded-lg p-3 text-center border-green-200">
+            <div className="text-xl font-bold text-green-600">{capiStats.deliveredSent}</div>
+            <div className="text-xs text-gray-600">CAPI Sent</div>
+          </div>
+          <div className="bg-white border rounded-lg p-3 text-center border-red-200">
+            <div className={`text-xl font-bold ${capiStats.deliveredFailed > 0 ? 'text-red-600' : 'text-gray-400'}`}>
+              {capiStats.deliveredFailed}
+            </div>
+            <div className="text-xs text-gray-600">CAPI Failed</div>
+          </div>
+          <div className="bg-white border rounded-lg p-3 text-center border-yellow-200">
+            <div className={`text-xl font-bold ${capiStats.deliveredPending > 0 ? 'text-yellow-600' : 'text-gray-400'}`}>
+              {capiStats.deliveredPending}
+            </div>
+            <div className="text-xs text-gray-600">CAPI Pending</div>
           </div>
         </div>
       )}
@@ -467,6 +520,64 @@ export default function DiagnosticsPage() {
                         </td>
                         <td className="px-4 py-2 font-mono text-xs text-gray-500 truncate max-w-[200px]" title={event.event_id}>
                           {event.event_id}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Meta CAPI Delivered Events (Server-side) */}
+          <div className="bg-white border rounded-lg overflow-hidden">
+            <div className="px-4 py-3 bg-green-50 border-b font-medium flex items-center justify-between">
+              <span>🚀 Meta CAPI - Delivered Events (Server-side)</span>
+              <span className="text-xs text-gray-500">Last 20</span>
+            </div>
+            {capiStats.recentDelivered.length === 0 ? (
+              <div className="p-6 text-center text-gray-500">
+                No Delivered events sent yet. Events will appear when orders are marked as delivered.
+              </div>
+            ) : (
+              <div className="max-h-64 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b sticky top-0">
+                    <tr>
+                      <th className="text-left px-4 py-2 font-medium">Order</th>
+                      <th className="text-center px-4 py-2 font-medium">Status</th>
+                      <th className="text-left px-4 py-2 font-medium">Time</th>
+                      <th className="text-left px-4 py-2 font-medium">Error</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {capiStats.recentDelivered.map((order) => (
+                      <tr key={order.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2 font-mono text-xs">
+                          <Link href={`/admin/orders/${order.id}`} className="text-blue-600 hover:underline">
+                            {order.short_code}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-2 text-center">
+                          {order.status === 'sent' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              ✓ Sent
+                            </span>
+                          ) : order.status === 'failed' ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                              ✗ Failed
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                              ⏳ Pending
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-xs text-gray-600 whitespace-nowrap">
+                          {order.attempted_at ? formatTime(order.attempted_at) : '-'}
+                        </td>
+                        <td className="px-4 py-2 text-xs text-red-600 truncate max-w-[200px]" title={order.error || ''}>
+                          {order.error || '-'}
                         </td>
                       </tr>
                     ))}
