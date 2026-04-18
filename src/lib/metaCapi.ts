@@ -22,6 +22,31 @@ export function normalizePhone(p?: string | null): string | undefined {
   return p ? p.replace(/\D/g, '') : undefined;
 }
 
+/**
+ * Normalize Pakistan phone numbers to E.164-like format (country code included)
+ * 
+ * Examples:
+ * - "0300 1234567" → "923001234567"
+ * - "+92 300 1234567" → "923001234567"
+ * - "92 300 1234567" → "923001234567"
+ * - "0092 300 1234567" → "923001234567"
+ */
+export function normalizePhonePK(p?: string | null): string | undefined {
+  if (!p) return undefined;
+  let d = p.replace(/\D/g, ''); // digits only
+
+  // handle leading 0092 -> 92
+  if (d.startsWith('0092')) d = '92' + d.slice(4);
+
+  // handle local PK mobile: 03XXXXXXXXX -> 92 3XXXXXXXXX (11 digits starting with 0)
+  if (d.startsWith('0') && d.length === 11) d = '92' + d.slice(1);
+
+  // basic sanity: PK numbers usually 12 digits with 92 prefix (e.g., 923001234567)
+  if (d.length < 10) return undefined; // too short to be real; don't send
+
+  return d;
+}
+
 export type MetaCapiEvent = {
   event_name: string;
   event_time: number;
@@ -113,7 +138,7 @@ export function buildDeliveredEvent(order: {
       fbp: order.fbp || undefined,
       fbc: order.fbc || undefined,
       em: sha256(order.email),
-      ph: sha256(normalizePhone(order.phone)),
+      ph: sha256(normalizePhonePK(order.phone)),  // Pakistan-normalized phone
     },
     custom_data: {
       currency: 'PKR',

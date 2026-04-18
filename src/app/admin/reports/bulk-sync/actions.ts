@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/auth';
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
 import { trackConsignment, getLatestMnpStatus, mapMnpStatusToOrderStatus } from '@/lib/mnp';
 import { revalidatePath } from 'next/cache';
+import { sendDeliveredEventToMeta } from '@/app/admin/orders/[id]/metaDelivered';
 
 const MAX_ORDERS_PER_RUN = 200;
 
@@ -84,6 +85,13 @@ export async function bulkSyncMnpStatusAction() {
           });
         } else {
           updated++;
+          
+          // Send Delivered event to Meta CAPI (fire once, non-blocking)
+          if (newStatus === 'delivered') {
+            sendDeliveredEventToMeta(order.id).catch((err: any) => {
+              console.error('[bulk-sync] Meta Delivered event failed', { orderId: order.id, error: err?.message });
+            });
+          }
         }
       }
 

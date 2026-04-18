@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/auth';
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
 import { bookConsignment, trackConsignment, getLatestMnpStatus, mapMnpStatusToOrderStatus } from '@/lib/mnp';
 import { revalidatePath } from 'next/cache';
+import { sendDeliveredEventToMeta } from './metaDelivered';
 
 export async function bookWithMnpAction(formData: FormData) {
   await requireAdmin();
@@ -204,6 +205,13 @@ export async function syncMnpStatusAction(formData: FormData) {
 
       if (updateErr) {
         return { ok: false, message: `Status update failed: ${updateErr.message}` } as const;
+      }
+
+      // Send Delivered event to Meta CAPI (fire once, non-blocking)
+      if (newStatus === 'delivered') {
+        sendDeliveredEventToMeta(orderId).catch((err: any) => {
+          console.error('[mnpActions] Meta Delivered event failed', { orderId, error: err?.message });
+        });
       }
 
       revalidatePath(`/admin/orders/${orderId}`);
