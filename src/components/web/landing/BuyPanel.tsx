@@ -130,6 +130,23 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
 
   const effectiveChatUrl = chatFacebookUrl || chatInstagramUrl || null;
 
+  // Handler for "Order Now" click - fires AddToCart event
+  const handleOrderNowClick = React.useCallback(() => {
+    // Fire AddToCart pixel event
+    if (variantId && price) {
+      const contentId = contentIdSource === 'variant_id' 
+        ? variantId 
+        : (variantSkuMap?.[variantId] || variantId);
+      track('AddToCart', {
+        content_ids: [contentId],
+        content_type: 'product',
+        value: price,
+        currency: 'PKR',
+      });
+    }
+    setDrawerOpen(true);
+  }, [variantId, price, contentIdSource, variantSkuMap]);
+
   // Determine if any combinations under current selection are available (for enabling the drawer)
   const anyAvailForSelection = React.useMemo(() => {
     const m = matrix;
@@ -404,7 +421,7 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
 
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         <button
-          onClick={() => setDrawerOpen(true)}
+          onClick={handleOrderNowClick}
           disabled={!anyAvailForSelection}
           className={`w-full sm:w-auto rounded-lg ${mainCtaPadding} ${mainCtaText} text-white ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
         >
@@ -563,7 +580,7 @@ export default function BuyPanel({ colors, models, packages, sizes, matrix, colo
             )}
             <div className="flex flex-col sm:flex-row gap-2">
               <button
-                onClick={() => setDrawerOpen(true)}
+                onClick={handleOrderNowClick}
                 disabled={!anyAvailForSelection}
                 className={`w-full sm:w-auto rounded-lg ${nearBottom ? floatCtaPadding : floatCtaPadding} ${floatCtaText} text-white ${(!anyAvailForSelection) ? 'bg-gray-400' : 'bg-black hover:bg-gray-900'}`}
               >
