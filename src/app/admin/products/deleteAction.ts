@@ -6,11 +6,38 @@ import { getSupabaseServiceClient } from '@/lib/supabaseService';
 export async function deleteProductAction(productId: string) {
   const supabase = getSupabaseServiceClient();
 
+  // Check if product has orders (via variants -> order_lines)
+  const { data: variants } = await supabase
+    .from('variants')
+    .select('id')
+    .eq('product_id', productId);
+
+  if (variants && variants.length > 0) {
+    const variantIds = variants.map((v: any) => v.id);
+    const { count } = await supabase
+      .from('order_lines')
+      .select('id', { count: 'exact', head: true })
+      .in('variant_id', variantIds);
+
+    if (count && count > 0) {
+      return { 
+        success: false, 
+        error: `Cannot delete: This product has ${count} order(s). Deactivate it instead.` 
+      };
+    }
+  }
+
+  // Clear session references (set to null instead of delete)
+  await supabase
+    .from('sessions')
+    .update({ entry_product_id: null })
+    .eq('entry_product_id', productId);
+
   // Delete related records first (foreign key constraints)
   // Delete product_pixel
   await supabase.from('product_pixel').delete().eq('product_id', productId);
   
-  // Delete variants (this will cascade to order_lines if set up, otherwise may fail)
+  // Delete variants
   await supabase.from('variants').delete().eq('product_id', productId);
   
   // Delete landing_pages
