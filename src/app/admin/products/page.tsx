@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getSupabaseServerClient } from '@/lib/supabaseServer';
+import { DeleteProductButton } from './DeleteProductButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,9 +39,14 @@ export default async function ProductsListPage() {
                 <span className={`inline-block px-2 py-0.5 rounded text-xs ${ (p as any).description_ur ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>UR</span>
               </td>
               <td className="py-2 pr-4">
-                <div className="flex gap-2">
+                <div className="flex gap-3">
                   <Link href={`/admin/products/${(p as any).id}`} className="text-blue-600 hover:underline">Edit</Link>
                   <Link href={`/lp/${(p as any).slug}`} className="text-gray-700 hover:underline" target="_blank">View LP</Link>
+                  <DeleteProductButton
+                    productId={(p as any).id}
+                    productName={(p as any).name}
+                    productSlug={(p as any).slug}
+                  />
                 </div>
               </td>
             </tr>
